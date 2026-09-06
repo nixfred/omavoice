@@ -51,6 +51,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.refresh_sources()
         self.refresh_library()
         GLib.timeout_add(150, self._tick)
+        GLib.timeout_add_seconds(3, self._rescan_if_idle)
         self.connect("close-request", self._on_close_request)
 
     # -- construction --------------------------------------------------
@@ -87,7 +88,7 @@ class MainWindow(Adw.ApplicationWindow):
         # Input group --------------------------------------------------
         group = Adw.PreferencesGroup(title="Input")
         body.append(group)
-        self.source_row = Adw.ComboRow(title="Microphone")
+        self.source_row = Adw.ComboRow(title="Input", subtitle="Microphones, playing apps, and system audio")
         refresh = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER,
                              tooltip_text="Rescan inputs")
         refresh.add_css_class("flat")
@@ -191,8 +192,16 @@ class MainWindow(Adw.ApplicationWindow):
 
     # -- sources -------------------------------------------------------
 
-    def refresh_sources(self):
-        self.sources = sources.list_sources()
+    def _rescan_if_idle(self):
+        """Apps start and stop playing; keep the picker current between takes."""
+        if self.state == "idle" and not self.source_row.get_property("has-focus"):
+            fresh = sources.list_all()
+            if [s.name for s in fresh] != [s.name for s in self.sources]:
+                self.refresh_sources(fresh)
+        return True
+
+    def refresh_sources(self, fresh=None):
+        self.sources = sources.list_all() if fresh is None else fresh
         default = sources.default_source_name()
         labels = ["System default" + (f" ({self._describe(default)})" if default else "")]
         labels += [s.label for s in self.sources]
@@ -243,6 +252,13 @@ class MainWindow(Adw.ApplicationWindow):
     def start_recording(self):
         if self.state != "idle":
             return
+        wanted = self.selected_source_name()
+        if wanted.startswith(sources.APP_PREFIX):
+            playing = {s.name for s in sources.list_app_streams()}
+            if wanted not in playing:
+                self._on_error("That app is no longer playing audio. Pick another input.")
+                self.refresh_sources()
+                return
         fmt = by_key(self.settings.format)
         title = self.title_row.get_text().strip()
         self._clear_transcript()

@@ -14,6 +14,7 @@ from omavoice import pcm
 
 BLOCK_BYTES = pcm.seconds_to_bytes(0.1)
 MONITOR_SUFFIX = ".monitor"
+APP_PREFIX = "app:"
 
 
 def build_command(source_name: str) -> list:
@@ -21,12 +22,16 @@ def build_command(source_name: str) -> list:
 
     pactl lists a sink's monitor as "<sink>.monitor", but that is not a
     PipeWire node. To capture what a sink plays, target the sink itself and
-    ask for a sink-capture stream.
+    ask for a sink-capture stream. The same flag against an application's
+    output stream captures just that application.
     """
     cmd = ["pw-record", "--rate", str(pcm.SAMPLE_RATE), "--channels", str(pcm.CHANNELS),
            "--format", "s16", "--raw"]
     if source_name and source_name != "default":
-        if source_name.endswith(MONITOR_SUFFIX):
+        if source_name.startswith(APP_PREFIX):
+            # A single application's playback stream, addressed by object.serial.
+            cmd += ["-P", "{ stream.capture.sink = true }", "--target", source_name[len(APP_PREFIX):]]
+        elif source_name.endswith(MONITOR_SUFFIX):
             cmd += ["-P", "{ stream.capture.sink = true }", "--target", source_name[:-len(MONITOR_SUFFIX)]]
         else:
             cmd += ["--target", source_name]

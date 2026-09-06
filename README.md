@@ -11,8 +11,10 @@ Nothing leaves the laptop.
 
 ## Features
 
-- **Any input.** Microphones and system-audio monitors from PipeWire, with a
-  rescan button and the system default marked.
+- **Any input.** Microphones, system-audio monitors, and every application
+  that is currently playing audio, each selectable on its own. Pick a browser
+  tab's stream and nothing else on the system ends up in the file. The list
+  refreshes itself as apps start and stop playing.
 - **Five formats.** Opus (default), MP3, M4A/AAC, FLAC, WAV. Audio is captured
   losslessly and encoded when you stop, so the format never affects the transcript.
 - **Live transcript** while you record, toggleable, in chunks of a few seconds.
@@ -27,6 +29,8 @@ Nothing leaves the laptop.
   and a `--toggle` flag for a global hotkey.
 - **Voice activity detection** so whisper is not asked to transcribe silence,
   which is where it invents text.
+
+Omavoice appears in the Omarchy menu (`Super+Space`) under Apps once installed.
 
 ## Install
 
@@ -79,7 +83,10 @@ Inside the window, `Ctrl+R` does the same.
 
 1. `pw-record` streams raw 48 kHz mono PCM to a master file in
    `~/Recordings/.omavoice-tmp/`. Pausing drops incoming blocks, so resume needs
-   no stitching, and a crash leaves the raw audio intact.
+   no stitching, and a crash leaves the raw audio intact. Microphones are
+   targeted by node name. A sink monitor or a single application's playback
+   stream is captured with `stream.capture.sink = true` against the sink or
+   the app's stream serial, which is how PipeWire isolates one app's audio.
 2. Every few seconds the newest audio is cut at its quietest point, resampled
    to 16 kHz with ffmpeg, and sent to a `whisper-server` that keeps the model
    loaded. The reply is appended to the live transcript.

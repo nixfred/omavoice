@@ -10,7 +10,7 @@ from omavoice import pcm
 from omavoice.config import Settings
 from omavoice.formats import FORMATS, by_key, index_of
 from omavoice.naming import basename, slugify, unique_basename
-from omavoice.sources import parse_sources
+from omavoice.sources import parse_app_streams, parse_sources
 from omavoice.whisper import Segment, clean_text, render_transcript
 
 
@@ -168,3 +168,30 @@ class SpeechGateTests(unittest.TestCase):
         out = dedupe_segments(segs)
         self.assertEqual([s.text for s in out], ["Same.", "Other.", "Same."])
         self.assertEqual(out[0].end, 2)
+
+
+class AppStreamTests(unittest.TestCase):
+    DUMP = json.dumps([
+        {"id": 75, "type": "PipeWire:Interface:Node", "info": {"state": "running", "props": {
+            "media.class": "Stream/Output/Audio", "application.name": "pw-play", "node.name": "pw-play",
+            "media.name": "pw-play", "object.serial": 3897}}},
+        {"id": 77, "type": "PipeWire:Interface:Node", "info": {"state": "running", "props": {
+            "media.class": "Stream/Output/Audio", "application.name": "Brave", "node.name": "brave",
+            "media.name": "Why anchors are insane", "object.serial": 3904}}},
+        {"id": 58, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "media.class": "Audio/Source", "node.name": "alsa_input.x", "object.serial": 100}}},
+        {"id": 5, "type": "PipeWire:Interface:Port", "info": {"props": {"media.class": "Stream/Output/Audio"}}},
+    ])
+
+    def test_only_playback_streams(self):
+        apps = parse_app_streams(self.DUMP)
+        self.assertEqual([a.name for a in apps], ["app:3904", "app:3897"])
+        self.assertEqual(apps[0].label, "App: Brave \u2014 Why anchors are insane")
+        self.assertEqual(apps[1].label, "App: pw-play")
+        self.assertTrue(all(a.is_app for a in apps))
+
+    def test_recorder_targets_serial(self):
+        from omavoice.recorder import build_command
+        cmd = build_command("app:3904")
+        self.assertEqual(cmd[cmd.index("--target") + 1], "3904")
+        self.assertIn("{ stream.capture.sink = true }", cmd)
