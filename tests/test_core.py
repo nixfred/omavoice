@@ -195,3 +195,12 @@ class AppStreamTests(unittest.TestCase):
         cmd = build_command("app:3904")
         self.assertEqual(cmd[cmd.index("--target") + 1], "3904")
         self.assertIn("{ stream.capture.sink = true }", cmd)
+
+
+class PauseMediaTests(unittest.TestCase):
+    def test_only_microphones_pause_players(self):
+        from omavoice.session import is_microphone
+        self.assertTrue(is_microphone("default"))
+        self.assertTrue(is_microphone("alsa_input.pci-0000_00_1f.3.analog-stereo"))
+        self.assertFalse(is_microphone("app:3904"))
+        self.assertFalse(is_microphone("bluez_output.aa.1.monitor"))

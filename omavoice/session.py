@@ -22,6 +22,10 @@ from omavoice.recorder import Recorder, RecorderError
 MIN_SECONDS = 0.5
 
 
+def is_microphone(source_name: str) -> bool:
+    return not (source_name.startswith("app:") or source_name.endswith(".monitor"))
+
+
 @dataclass
 class SavedRecording:
     audio_path: Path
@@ -100,7 +104,9 @@ class Session:
         except RecorderError as exc:
             self.cb["on_error"](str(exc))
             raise
-        if self.settings.pause_media:
+        if self.settings.pause_media and is_microphone(source_name):
+            # Only a mic take benefits from silencing players. Capturing an app
+            # or the system output needs that audio to keep playing.
             self.paused_players = mpris.pause_playing()
         if live:
             threading.Thread(target=self._start_live, name="omavoice-engine", daemon=True).start()

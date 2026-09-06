@@ -33,7 +33,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.ts_row.connect("notify::active", lambda r, _: self._set("timestamps", r.get_active()))
         files.add(self.ts_row)
         self.media_row = Adw.SwitchRow(title="Pause media players while recording",
-                                       subtitle="Any MPRIS player that is playing is paused, then resumed",
+                                       subtitle="Only for microphone takes. Players are left alone when recording an app or system audio.",
                                        active=settings.pause_media)
         self.media_row.connect("notify::active", lambda r, _: self._set("pause_media", r.get_active()))
         files.add(self.media_row)
