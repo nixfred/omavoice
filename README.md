@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.2.0-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.0-e01b24?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-ffd166?style=for-the-badge"></a>
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793d1?style=for-the-badge&logo=archlinux&logoColor=white">
   <img alt="GTK4 + libadwaita" src="https://img.shields.io/badge/GTK4-libadwaita-7c4dff?style=for-the-badge&logo=gnome&logoColor=white">
@@ -48,8 +48,9 @@ with a <code>.txt</code> of the same name beside it. Nothing ever leaves the mac
     <td width="33%" valign="top">
       <h4>📝 Transcript as you go</h4>
       Live captions from a warm <code>whisper-server</code>, toggleable with one switch.
-      When you stop, the whole take is transcribed again with voice activity detection
-      and the sidecar is replaced with the accurate version.
+      Every chunk clears a Silero voice activity check first, so a pause stays a pause
+      instead of becoming invented text. When you stop, the whole take is transcribed
+      again and the sidecar is replaced with the accurate version.
     </td>
     <td width="33%" valign="top">
       <h4>💾 Five formats</h4>
@@ -120,7 +121,7 @@ open Preferences and download one.
 | `base.en` | 142 MB | Live captions on a laptop CPU. The default choice. |
 | `small.en` | 466 MB | A stronger final pass. Set it as the final transcript model. |
 | `medium.en` | 1.5 GB | Final pass when accuracy matters more than waiting. |
-| `silero-v5.1.2` | 1 MB | Voice activity detection. Fetched automatically on first use. |
+| `silero-v5.1.2` | 1 MB | Voice activity detection. Fetched automatically, and **required** for live captions. |
 
 From the shell:
 
@@ -171,10 +172,16 @@ flowchart LR
    `stream.capture.sink = true`, which is how PipeWire isolates one app's audio. Explicit
    targets carry `node.dont-fallback` and `node.dont-reconnect`, so a stream that vanishes
    ends the take with an error instead of quietly recording something else.
-2. **Live captions.** Every few seconds the newest audio is cut at its quietest point,
-   resampled by ffmpeg, and posted to a `whisper-server` that keeps the model loaded.
-   Chunks with no speech are skipped. A well known set of whisper hallucinations on
-   silence is dropped.
+2. **Live captions.** Every few seconds the newest audio is cut at its quietest point
+   and resampled by ffmpeg. Before whisper sees it, the chunk is put to the Silero
+   voice activity detector, and it is only sent on if there is real speech in it. This
+   matters more than it sounds: handed audio with no voice in it, whisper does not
+   return nothing, it returns fluent invented text. Loudness alone cannot tell the
+   difference, because room tone, music and keystrokes all clear a volume threshold.
+   The chunk is sent with **no prompt**. Carrying the previous chunk forward as context
+   makes whisper replay that text verbatim over a pause, and makes it delete real words
+   at a boundary it mistakes for a repeat. Live captions refuse to start without the
+   detector rather than run unguarded.
 3. **Finish.** ffmpeg encodes the master into the chosen format, the live text is written
    as a provisional transcript, and `whisper-cli` produces the final transcript in the
    background with Silero voice activity detection. The app holds itself alive until

@@ -243,3 +243,96 @@ class HardeningTests(unittest.TestCase):
         from omavoice.session import Engine
         e = Engine()
         self.assertIsNone(e.key)
+
+
+class VadTests(unittest.TestCase):
+    NONE = "Detected 0 speech segments: \n"
+    ONE = "Detected 1 speech segments: \nSpeech segment 0: start = 0.00, end = 109.00\n"
+    THREE = ("Detected 3 speech segments: \nSpeech segment 0: start = 0.00, end = 150.00\n"
+             "Speech segment 1: start = 186.00, end = 402.00\n"
+             "Speech segment 2: start = 455.00, end = 690.00\n")
+
+    def test_no_segments(self):
+        from omavoice import vad
+        self.assertEqual(vad.analyze(self.NONE), [])
+        self.assertEqual(vad.speech_seconds(self.NONE), 0.0)
+
+    def test_unreadable_output_is_not_silence(self):
+        from omavoice import vad
+        # The binary exits zero when it rejects an argument. "no answer" must
+        # never be mistaken for "no speech", or every chunk gets dropped.
+        self.assertIsNone(vad.analyze(""))
+        self.assertIsNone(vad.analyze("error: unknown argument: -vspd"))
+        self.assertEqual(vad.analyze(self.NONE), [])
+
+    def test_gate_fails_open_on_unreadable_output(self):
+        from omavoice import vad
+        from omavoice.vad import SpeechGate
+
+        class FakeProc:
+            returncode = 0
+            stdout = "error: unknown argument: -vspd"
+            stderr = ""
+
+        gate = SpeechGate(__file__)
+        original = vad.subprocess.run
+        vad.subprocess.run = lambda *a, **k: FakeProc()
+        try:
+            self.assertTrue(gate.accepts(b"RIFF"))
+            self.assertEqual(gate.rejected, 0)
+            self.assertIsNotNone(gate.last_error)
+        finally:
+            vad.subprocess.run = original
+
+    def test_centiseconds_become_seconds(self):
+        from omavoice import vad
+        self.assertEqual(vad.parse_segments(self.ONE), [(0.0, 1.09)])
+        self.assertAlmostEqual(vad.speech_seconds(self.ONE), 1.09)
+        self.assertEqual(len(vad.parse_segments(self.THREE)), 3)
+        self.assertAlmostEqual(vad.speech_seconds(self.THREE), 1.50 + 2.16 + 2.35)
+
+    def test_gate_fails_open_without_a_model(self):
+        from omavoice.vad import SpeechGate
+        gate = SpeechGate(None)
+        self.assertFalse(gate.armed)
+        self.assertTrue(gate.accepts(b"anything"))
+        self.assertEqual(gate.checked, 0)
+
+    def test_gate_rejects_a_chunk_with_no_speech(self):
+        from omavoice import vad
+        from omavoice.vad import SpeechGate
+
+        class FakeProc:
+            returncode = 0
+            stdout = VadTests.NONE
+            stderr = ""
+
+        gate = SpeechGate(__file__)          # any existing file satisfies `armed`
+        original = vad.subprocess.run
+        vad.subprocess.run = lambda *a, **k: FakeProc()
+        try:
+            self.assertFalse(gate.accepts(b"RIFF"))
+            self.assertEqual(gate.rejected, 1)
+        finally:
+            vad.subprocess.run = original
+
+
+class NoPromptTests(unittest.TestCase):
+    def test_server_transcribe_takes_no_prompt(self):
+        import inspect
+        from omavoice.whisper import WhisperServer
+        params = inspect.signature(WhisperServer.transcribe).parameters
+        self.assertNotIn("prompt", params)
+
+    def test_live_transcriber_keeps_no_carry_forward_text(self):
+        from omavoice.live import LiveTranscriber
+        live = LiveTranscriber.__new__(LiveTranscriber)
+        self.assertFalse(hasattr(live, "last_text"))
+        src = inspect_source()
+        self.assertNotIn("prompt=", src)
+
+
+def inspect_source():
+    import inspect
+    from omavoice import live
+    return inspect.getsource(live)

@@ -262,10 +262,14 @@ class WhisperServer:
         except (OSError, subprocess.TimeoutExpired):
             proc.kill()
 
-    def transcribe(self, wav_bytes: bytes, prompt: str = "", timeout: float = 120.0) -> str:
+    def transcribe(self, wav_bytes: bytes, timeout: float = 120.0) -> str:
+        """Transcribe one chunk.
+
+        Deliberately sends no `prompt`. Carrying the previous chunk forward as
+        context makes whisper replay that text over a silent chunk, and makes
+        it delete real words at a boundary it mistakes for a repeat.
+        """
         fields = {"response_format": "json", "temperature": "0.0", "no_timestamps": "true"}
-        if prompt:
-            fields["prompt"] = prompt[-200:]
         data = self._post(wav_bytes, fields, timeout=timeout)
         text = clean_text(data.get("text", ""))
         if text.lower().strip() in HALLUCINATIONS:

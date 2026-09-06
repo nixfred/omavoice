@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from omavoice import mpris, whisper
+from omavoice import mpris, vad, whisper
 from omavoice.config import Settings
 from omavoice.encoder import encode
 from omavoice.formats import AudioFormat
@@ -59,6 +59,12 @@ class Engine:
                 self.server.stop()
             if self.vad_model is None:
                 self.vad_model = whisper.ensure_vad_model()
+            if self.vad_model is None:
+                # Without voice activity detection every pause becomes invented
+                # text. Refuse live captions rather than fill the pane with it.
+                self.error = ("Live captions need the 1 MB voice activity model. "
+                              "Download silero-v5.1.2 from Preferences, then try again.")
+                return None
             self.server = whisper.WhisperServer(model, settings.effective_threads(), settings.language,
                                                 vad_model=self.vad_model)
             self.model = model
@@ -133,8 +139,10 @@ class Session:
         if not self.recorder.running:
             self.cb["on_engine"]("ready")
             return
+        gate = vad.SpeechGate(self.engine.vad_model, threads=max(2, self.settings.effective_threads() // 2))
         self.live = LiveTranscriber(self.recorder, server, self.settings.chunk_seconds,
-                                    on_text=self.cb["on_live_text"], on_error=self.cb["on_error"])
+                                    on_text=self.cb["on_live_text"], on_error=self.cb["on_error"],
+                                    gate=gate)
         self.live.start()
         self.cb["on_engine"]("ready")
 

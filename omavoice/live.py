@@ -10,16 +10,16 @@ MIN_FLUSH_SECONDS = 0.6
 
 
 class LiveTranscriber:
-    def __init__(self, recorder, server, chunk_seconds: float, on_text, on_error):
+    def __init__(self, recorder, server, chunk_seconds: float, on_text, on_error, gate=None):
         self.recorder = recorder
         self.server = server
+        self.gate = gate
         self.chunk_bytes = pcm.seconds_to_bytes(max(3.0, chunk_seconds))
         self.on_text = on_text
         self.on_error = on_error
         self._stop = threading.Event()
         self._flush = True
         self._thread = None
-        self.last_text = ""
         self.texts = []
         self.busy = False
 
@@ -52,18 +52,27 @@ class LiveTranscriber:
             self._process(rest)
 
     def _process(self, chunk: bytes) -> None:
+        # Cheap early-out first: a muted or unplugged input is dead air, and
+        # this skips spawning ffmpeg and the detector for it.
         if not pcm.has_speech(chunk):
             return
         self.busy = True
         try:
-            text = self.server.transcribe(pcm_to_wav16k(chunk), prompt=self.last_text)
+            wav = pcm_to_wav16k(chunk)
+            # Signal is present, but is any of it voice? Room tone, music and
+            # keystrokes get this far and whisper would invent words for them.
+            if self.gate is not None and not self.gate.accepts(wav):
+                return
+            # No prompt. Feeding the previous chunk back in nudges whisper to
+            # repeat it verbatim over a pause, and to drop real words it
+            # decides are a repeat of what the prompt already said.
+            text = self.server.transcribe(wav)
         except Exception as exc:  # noqa: BLE001 - surface anything to the UI
             self.on_error(str(exc))
             return
         finally:
             self.busy = False
         if text:
-            self.last_text = text
             self.texts.append(text)
             self.on_text(text)
 
