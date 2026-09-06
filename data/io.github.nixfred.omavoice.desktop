@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Omavoice
+GenericName=Voice Recorder
+Comment=Record from any microphone with live transcription
+Exec=omavoice
+Icon=io.github.nixfred.omavoice
+Terminal=false
+Categories=AudioVideo;Audio;Recorder;GTK;
+Keywords=record;voice;microphone;transcript;whisper;dictation;
+StartupNotify=true
+StartupWMClass=io.github.nixfred.omavoice
+Actions=toggle;
+
+[Desktop Action toggle]
+Name=Start or stop recording
+Exec=omavoice --toggle
