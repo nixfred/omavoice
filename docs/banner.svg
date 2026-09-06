@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Omavoice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f0d1a"/>
+      <stop offset="0.55" stop-color="#1c1730"/>
+      <stop offset="1" stop-color="#2a1230"/>
+    </linearGradient>
+    <linearGradient id="mic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8a80"/>
+      <stop offset="1" stop-color="#e01b24"/>
+    </linearGradient>
+    <linearGradient id="wave" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="300" y2="0">
+      <stop offset="0" stop-color="#ff6b6b" stop-opacity="0"/>
+      <stop offset="0.2" stop-color="#ff6b6b"/>
+      <stop offset="0.5" stop-color="#ffd166"/>
+      <stop offset="0.8" stop-color="#6be0ff"/>
+      <stop offset="1" stop-color="#6be0ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="waveWide" gradientUnits="userSpaceOnUse" x1="120" y1="0" x2="1080" y2="0">
+      <stop offset="0" stop-color="#ff6b6b" stop-opacity="0"/>
+      <stop offset="0.3" stop-color="#ff6b6b"/>
+      <stop offset="0.6" stop-color="#ffd166"/>
+      <stop offset="0.85" stop-color="#6be0ff"/>
+      <stop offset="1" stop-color="#6be0ff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9c4e8"/>
+    </linearGradient>
+    <radialGradient id="glowRed" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#e01b24" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#e01b24" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBlue" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#6be0ff" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#6be0ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+
+  <!-- ambient glows -->
+  <circle cx="200" cy="180" r="200" fill="url(#glowRed)"/>
+  <circle cx="1000" cy="120" r="220" fill="url(#glowBlue)"/>
+
+  <!-- waveform -->
+  <g transform="translate(850,180)" stroke="url(#wave)" stroke-width="6" stroke-linecap="round" opacity="0.95">
+    <line x1="0" y1="-14" x2="0" y2="14"/>
+    <line x1="13" y1="-30" x2="13" y2="30"/>
+    <line x1="26" y1="-52" x2="26" y2="52"/>
+    <line x1="39" y1="-24" x2="39" y2="24"/>
+    <line x1="52" y1="-70" x2="52" y2="70"/>
+    <line x1="65" y1="-40" x2="65" y2="40"/>
+    <line x1="78" y1="-92" x2="78" y2="92"/>
+    <line x1="91" y1="-58" x2="91" y2="58"/>
+    <line x1="104" y1="-36" x2="104" y2="36"/>
+    <line x1="117" y1="-78" x2="117" y2="78"/>
+    <line x1="130" y1="-46" x2="130" y2="46"/>
+    <line x1="143" y1="-20" x2="143" y2="20"/>
+    <line x1="156" y1="-64" x2="156" y2="64"/>
+    <line x1="169" y1="-30" x2="169" y2="30"/>
+    <line x1="182" y1="-84" x2="182" y2="84"/>
+    <line x1="195" y1="-50" x2="195" y2="50"/>
+    <line x1="208" y1="-26" x2="208" y2="26"/>
+    <line x1="221" y1="-60" x2="221" y2="60"/>
+    <line x1="234" y1="-38" x2="234" y2="38"/>
+    <line x1="247" y1="-16" x2="247" y2="16"/>
+    <line x1="260" y1="-44" x2="260" y2="44"/>
+    <line x1="273" y1="-22" x2="273" y2="22"/>
+    <line x1="286" y1="-10" x2="286" y2="10"/>
+  </g>
+
+  <!-- microphone badge -->
+  <g transform="translate(120,90)">
+    <rect x="0" y="0" width="180" height="180" rx="42" fill="#15121f" stroke="#3b3550" stroke-width="2"/>
+    <rect x="66" y="30" width="48" height="78" rx="24" fill="url(#mic)"/>
+    <path d="M48 88a42 42 0 0 0 84 0" fill="none" stroke="#f6f5f4" stroke-width="10" stroke-linecap="round"/>
+    <path d="M90 130v18M68 150h44" fill="none" stroke="#f6f5f4" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="150" cy="30" r="14" fill="#e01b24" filter="url(#soft)"/>
+    <circle cx="150" cy="30" r="12" fill="#e01b24"/>
+    <circle cx="150" cy="30" r="5" fill="#ffffff"/>
+  </g>
+
+  <!-- title -->
+  <text x="340" y="150" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="88" font-weight="800" fill="url(#title)" letter-spacing="-2">Omavoice</text>
+  <text x="344" y="200" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="26" font-weight="500" fill="#b7b2d1" letter-spacing="1">Record anything. Read it as you go.</text>
+
+  <!-- chips -->
+  <g font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="600">
+    <rect x="344" y="236" width="118" height="38" rx="19" fill="#26203a" stroke="#3f3860"/>
+    <text x="403" y="261" text-anchor="middle" fill="#ffd166">GTK4 · Adwaita</text>
+    <rect x="474" y="236" width="104" height="38" rx="19" fill="#26203a" stroke="#3f3860"/>
+    <text x="526" y="261" text-anchor="middle" fill="#6be0ff">PipeWire</text>
+    <rect x="590" y="236" width="122" height="38" rx="19" fill="#26203a" stroke="#3f3860"/>
+    <text x="651" y="261" text-anchor="middle" fill="#ff8a80">whisper.cpp</text>
+    <rect x="724" y="236" width="150" height="38" rx="19" fill="#26203a" stroke="#3f3860"/>
+    <text x="799" y="261" text-anchor="middle" fill="#c9f7c1">100% on-device</text>
+  </g>
+
+  <!-- bottom line -->
+  <rect x="120" y="318" width="960" height="2" fill="url(#waveWide)" opacity="0.7"/>
+</svg>
