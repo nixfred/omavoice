@@ -321,7 +321,12 @@ def transcribe_file(raw_path: Path, model: Model, threads: int, language: str, w
                     vad_model: Path | None = None) -> list:
     """Run whisper-cli over a whole raw master. Returns a list of Segment."""
     wav_path = workdir / "final16k.wav"
-    raw_to_wav16k_file(raw_path, wav_path)
+    try:
+        raw_to_wav16k_file(raw_path, wav_path)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(exc.stderr.decode(errors="replace").strip()[-300:] or "ffmpeg failed") from exc
+    except OSError as exc:
+        raise RuntimeError(f"ffmpeg could not run: {exc}") from exc
     out_prefix = workdir / "final"
     lang = "en" if model.english_only else (language or "auto")
     cmd = ["whisper-cli", "-m", str(model.path), "-t", str(threads), "-l", lang, "-np", "-sns",

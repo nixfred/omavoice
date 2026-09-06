@@ -48,7 +48,7 @@ class OmavoiceApp(Adw.Application):
         Adw.Application.do_startup(self)
         for name, handler in (("toggle-record", self._toggle_record), ("open-folder", self._open_folder),
                               ("preferences", self._preferences), ("about", self._about),
-                              ("quit", lambda *_: self.quit())):
+                              ("quit", self._quit)):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
@@ -67,6 +67,23 @@ class OmavoiceApp(Adw.Application):
             self.window.toggle_record()
 
     # -- actions -------------------------------------------------------
+
+    def _quit(self, *_):
+        # Route through the window so an active take is stopped and saved first.
+        if self.window is not None:
+            self.window.close()
+        else:
+            self.quit()
+
+    def busy(self, delta: int):
+        """Keep the process alive while a take is being encoded and transcribed."""
+        def apply():
+            if delta > 0:
+                self.hold()
+            else:
+                self.release()
+            return False
+        GLib.idle_add(apply)
 
     def _toggle_record(self, *_):
         if self.window is None:

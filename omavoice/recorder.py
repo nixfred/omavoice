@@ -15,6 +15,11 @@ from omavoice import pcm
 BLOCK_BYTES = pcm.seconds_to_bytes(0.1)
 MONITOR_SUFFIX = ".monitor"
 APP_PREFIX = "app:"
+PENDING_CAP_BYTES = pcm.seconds_to_bytes(90)
+# An explicitly chosen input must never be swapped for another one behind the
+# user's back. Without these, WirePlumber may relink a capture whose target
+# vanished (a browser tab that stopped playing) to some other node.
+STRICT_TARGET = "node.dont-fallback = true, node.dont-reconnect = true"
 
 
 def build_command(source_name: str) -> list:
@@ -30,11 +35,13 @@ def build_command(source_name: str) -> list:
     if source_name and source_name != "default":
         if source_name.startswith(APP_PREFIX):
             # A single application's playback stream, addressed by object.serial.
-            cmd += ["-P", "{ stream.capture.sink = true }", "--target", source_name[len(APP_PREFIX):]]
+            cmd += ["-P", "{ stream.capture.sink = true, " + STRICT_TARGET + " }",
+                    "--target", source_name[len(APP_PREFIX):]]
         elif source_name.endswith(MONITOR_SUFFIX):
-            cmd += ["-P", "{ stream.capture.sink = true }", "--target", source_name[:-len(MONITOR_SUFFIX)]]
+            cmd += ["-P", "{ stream.capture.sink = true, " + STRICT_TARGET + " }",
+                    "--target", source_name[:-len(MONITOR_SUFFIX)]]
         else:
-            cmd += ["--target", source_name]
+            cmd += ["-P", "{ " + STRICT_TARGET + " }", "--target", source_name]
     cmd.append("-")
     return cmd
 
@@ -52,6 +59,8 @@ class Recorder:
         self._pending = bytearray()
         self._paused = False
         self._stopping = False
+        self.buffer_pending = False   # only a live-caption consumer turns this on
+        self.dropped_pending = 0
         self.bytes_written = 0
         self.last_peak = 0.0
         self.max_peak = 0.0
@@ -119,9 +128,13 @@ class Recorder:
         if self._thread is not None:
             self._thread.join(timeout=3)
         if self._file is not None:
-            self._file.flush()
-            self._file.close()
-            self._file = None
+            try:
+                self._file.flush()
+            except OSError as exc:
+                self.error = self.error or f"could not flush recording: {exc}"
+            finally:
+                self._file.close()
+                self._file = None
         self._proc = None
         self._thread = None
         return self.bytes_written
@@ -148,6 +161,12 @@ class Recorder:
             self._pending = bytearray()
         return data
 
+    def set_buffering(self, enabled: bool) -> None:
+        self.buffer_pending = enabled
+        if not enabled:
+            with self._lock:
+                self._pending = bytearray()
+
     def unshift_pending(self, data: bytes) -> None:
         if not data:
             return
@@ -171,11 +190,17 @@ class Recorder:
                 self.last_peak = pcm.peak(block)
                 if self.last_peak > self.max_peak:
                     self.max_peak = self.last_peak
-                with self._lock:
-                    self._pending += block
+                if self.buffer_pending:
+                    with self._lock:
+                        self._pending += block
+                        overflow = len(self._pending) - PENDING_CAP_BYTES
+                        if overflow > 0:
+                            del self._pending[:overflow]
+                            self.dropped_pending += overflow
         except (OSError, ValueError) as exc:
             self.error = str(exc)
         finally:
             code = proc.wait()
             if code not in (0, -15, -2) and not self._stopping:
-                self.error = self.stderr_text() or f"pw-record exited with status {code}"
+                lines = [ln for ln in self.stderr_text().splitlines() if ln.strip()]
+                self.error = (lines[0] if lines else f"pw-record exited with status {code}").replace("stream node ", "")

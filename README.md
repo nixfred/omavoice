@@ -43,7 +43,7 @@ makepkg -si
 ```
 
 The package depends on `python-gobject`, `gtk4`, `libadwaita`, `pipewire-audio`,
-`libpulse`, `ffmpeg`, `whisper-cpp` and `ggml-cpu`. All are in the official
+`pipewire-pulse`, `libpulse`, `ffmpeg`, `whisper-cpp` and `ggml-cpu`. All are in the official
 repositories.
 
 To run from the checkout without installing:

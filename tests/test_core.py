@@ -144,13 +144,14 @@ class RecorderCommandTests(unittest.TestCase):
         cmd = build_command("bluez_output.aa.1.monitor")
         self.assertIn("--target", cmd)
         self.assertEqual(cmd[cmd.index("--target") + 1], "bluez_output.aa.1")
-        self.assertIn("{ stream.capture.sink = true }", cmd)
+        self.assertIn("stream.capture.sink = true", cmd[cmd.index("-P") + 1])
         self.assertEqual(cmd[-1], "-")
 
     def test_default_has_no_target(self):
         from omavoice.recorder import build_command
         self.assertNotIn("--target", build_command("default"))
         self.assertEqual(build_command("alsa_input.x")[-3:], ["--target", "alsa_input.x", "-"])
+        self.assertIn("-P", build_command("alsa_input.x"))
 
 
 class SpeechGateTests(unittest.TestCase):
@@ -194,7 +195,7 @@ class AppStreamTests(unittest.TestCase):
         from omavoice.recorder import build_command
         cmd = build_command("app:3904")
         self.assertEqual(cmd[cmd.index("--target") + 1], "3904")
-        self.assertIn("{ stream.capture.sink = true }", cmd)
+        self.assertIn("stream.capture.sink = true", cmd[cmd.index("-P") + 1])
 
 
 class PauseMediaTests(unittest.TestCase):
@@ -204,3 +205,41 @@ class PauseMediaTests(unittest.TestCase):
         self.assertTrue(is_microphone("alsa_input.pci-0000_00_1f.3.analog-stereo"))
         self.assertFalse(is_microphone("app:3904"))
         self.assertFalse(is_microphone("bluez_output.aa.1.monitor"))
+
+
+class HardeningTests(unittest.TestCase):
+    def test_config_rejects_wrong_types(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "config.json"
+            path.write_text(json.dumps({"recordings_dir": None, "threads": "8", "chunk_seconds": 5,
+                                        "timestamps": "yes", "format": "flac"}))
+            s = Settings.load(path)
+            self.assertTrue(s.recordings_dir.endswith("Recordings"))
+            self.assertEqual(s.threads, 0)
+            self.assertEqual(s.chunk_seconds, 5.0)
+            self.assertFalse(s.timestamps)
+            self.assertEqual(s.format, "flac")
+
+    def test_explicit_targets_never_fall_back(self):
+        from omavoice.recorder import build_command
+        for name in ("alsa_input.x", "sink.monitor", "app:12"):
+            props = build_command(name)[build_command(name).index("-P") + 1]
+            self.assertIn("node.dont-fallback = true", props, name)
+            self.assertIn("node.dont-reconnect = true", props, name)
+        self.assertNotIn("-P", build_command("default"))
+
+    def test_pending_buffer_is_opt_in_and_capped(self):
+        from omavoice.recorder import Recorder, PENDING_CAP_BYTES
+        r = Recorder()
+        self.assertFalse(r.buffer_pending)
+        r.set_buffering(True)
+        with r._lock:
+            r._pending += b"\x00" * (PENDING_CAP_BYTES + 10)
+        self.assertGreater(r.pending_length(), PENDING_CAP_BYTES)
+        r.set_buffering(False)
+        self.assertEqual(r.pending_length(), 0)
+
+    def test_engine_key_includes_language_and_threads(self):
+        from omavoice.session import Engine
+        e = Engine()
+        self.assertIsNone(e.key)

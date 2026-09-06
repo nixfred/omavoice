@@ -268,6 +268,7 @@ class MainWindow(Adw.ApplicationWindow):
             "on_saved": lambda saved, final: GLib.idle_add(self._on_saved, saved, final),
             "on_error": lambda text: GLib.idle_add(self._on_error, text),
             "on_engine": lambda state: GLib.idle_add(self._on_engine, state),
+            "on_busy": self.get_application().busy,
         }
         self.session = Session(self.settings, self.engine, callbacks)
         try:
@@ -527,8 +528,8 @@ class MainWindow(Adw.ApplicationWindow):
 
             def done(d, result):
                 if d.choose_finish(result) == "stop":
-                    self.stop_recording()
-                    GLib.timeout_add(300, self._close_when_saved)
+                    self.stop_recording()   # the app holds itself alive until the take is saved
+                    self.close()
 
             dialog.choose(self, None, done)
             return True
@@ -536,7 +537,3 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings.save()
         return False
 
-    def _close_when_saved(self):
-        self.state = "idle"
-        self.close()
-        return False

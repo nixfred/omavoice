@@ -1,7 +1,7 @@
 # Maintainer: Fred Nix <frednix@gmail.com>
 # Build and install from a checkout:  git clone <repo> && cd omavoice && makepkg -si
 pkgname=omavoice
-pkgver=0.1.2
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Voice recorder with live transcription for Omarchy (GTK4, PipeWire, whisper.cpp)"
 arch=('any')
@@ -13,6 +13,7 @@ depends=(
   'gtk4'
   'libadwaita'
   'pipewire-audio'
+  'pipewire-pulse'
   'libpulse'
   'ffmpeg'
   'whisper-cpp'

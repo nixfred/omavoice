@@ -48,15 +48,23 @@ class Settings:
             return cls()
         if not isinstance(raw, dict):
             return cls()
-        known = {f.name: f.type for f in fields(cls)}
+        defaults = cls()
         clean = {}
-        for key, value in raw.items():
-            if key in known:
-                clean[key] = value
-        try:
-            return cls(**clean)
-        except TypeError:
-            return cls()
+        for f in fields(cls):
+            if f.name not in raw:
+                continue
+            value = raw[f.name]
+            expected = type(getattr(defaults, f.name))
+            if expected is float and isinstance(value, int) and not isinstance(value, bool):
+                value = float(value)
+            if expected is bool and not isinstance(value, bool):
+                continue
+            if expected is int and (isinstance(value, bool) or not isinstance(value, int)):
+                continue
+            if not isinstance(value, expected):
+                continue          # wrong type: keep the default rather than crash later
+            clean[f.name] = value
+        return cls(**clean)
 
     def save(self, path: Path = CONFIG_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

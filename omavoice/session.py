@@ -5,6 +5,8 @@ a worker thread, so the window marshals them onto the main loop.
 """
 
 import shutil
+import subprocess
+import tempfile
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -39,6 +41,7 @@ class Engine:
     def __init__(self):
         self.server = None
         self.model = None
+        self.key = None
         self.vad_model = None
         self._lock = threading.Lock()
         self.error = None
@@ -49,7 +52,8 @@ class Engine:
             if model is None:
                 self.error = "No whisper model found. Download one from Preferences."
                 return None
-            if self.server is not None and self.server.ready and self.model == model:
+            key = (model.path, settings.effective_threads(), settings.language)
+            if self.server is not None and self.server.ready and self.key == key:
                 return self.server
             if self.server is not None:
                 self.server.stop()
@@ -58,6 +62,7 @@ class Engine:
             self.server = whisper.WhisperServer(model, settings.effective_threads(), settings.language,
                                                 vad_model=self.vad_model)
             self.model = model
+            self.key = key
             try:
                 self.server.start()
                 self.error = None
@@ -75,6 +80,8 @@ class Engine:
 
 
 class Session:
+    """One take. `on_busy(delta)` lets the app hold itself alive while a take finishes."""
+
     def __init__(self, settings: Settings, engine: Engine, callbacks: dict):
         self.settings = settings
         self.engine = engine
@@ -96,14 +103,19 @@ class Session:
         self.live_wanted = live
         self.started_at = datetime.now()
         root = self.settings.recordings_path()
-        self.workdir = root / ".omavoice-tmp" / basename(self.started_at, title)
-        self.workdir.mkdir(parents=True, exist_ok=True)
-        master = self.workdir / "master.raw"
         try:
+            tmp_root = root / ".omavoice-tmp"
+            tmp_root.mkdir(parents=True, exist_ok=True)
+            # Exclusive per-take directory: two takes in the same second must never share files.
+            self.workdir = Path(tempfile.mkdtemp(prefix=basename(self.started_at, title) + "-", dir=tmp_root))
+            master = self.workdir / "master.raw"
             self.recorder.start(source_name, master)
-        except RecorderError as exc:
-            self.cb["on_error"](str(exc))
-            raise
+        except (RecorderError, OSError) as exc:
+            self.cb["on_error"](f"Could not start recording: {exc}")
+            if self.workdir is not None:
+                shutil.rmtree(self.workdir, ignore_errors=True)
+            raise RecorderError(str(exc)) from exc
+        self._busy(+1)
         if self.settings.pause_media and is_microphone(source_name):
             # Only a mic take benefits from silencing players. Capturing an app
             # or the system output needs that audio to keep playing.
@@ -153,7 +165,7 @@ class Session:
         total = self.recorder.stop()
         mpris.resume(self.paused_players)
         self.paused_players = []
-        threading.Thread(target=self._finish, args=(total,), name="omavoice-finish", daemon=True).start()
+        threading.Thread(target=self._finish_guarded, args=(total,), name="omavoice-finish", daemon=True).start()
 
     def discard(self) -> None:
         self.recorder.stop()
@@ -161,11 +173,28 @@ class Session:
         if self.live is not None:
             self.live.stop(flush=False)
         shutil.rmtree(self.workdir, ignore_errors=True)
+        self._busy(-1)
+
+    def _busy(self, delta: int) -> None:
+        hook = self.cb.get("on_busy")
+        if hook is not None:
+            hook(delta)
 
     # -- finishing -----------------------------------------------------
 
+    def _finish_guarded(self, total_bytes: int) -> None:
+        try:
+            self._finish(total_bytes)
+        except Exception as exc:  # noqa: BLE001 - the take must never vanish silently
+            self.cb["on_error"](f"Saving failed: {exc}. Raw audio is in {self.workdir}.")
+            self.cb["on_status"]("")
+        finally:
+            self._busy(-1)
+
     def _finish(self, total_bytes: int) -> None:
         seconds = bytes_to_seconds(total_bytes)
+        if self.recorder.error:
+            self.cb["on_error"](f"Capture ended early: {self.recorder.error}")
         live_text = ""
         if self.live is not None:
             self.cb["on_status"]("Finishing live captions…")
@@ -187,11 +216,15 @@ class Session:
         self.cb["on_status"](f"Encoding {self.fmt.ext.upper()}…")
         try:
             encode(master, audio_path, self.fmt)
-        except RuntimeError as exc:
+        except (RuntimeError, subprocess.SubprocessError, OSError) as exc:
             # Keep the raw audio rather than lose the take.
             fallback = root / f"{base}.raw-pcm-s16le-48k.bin"
-            shutil.move(master, fallback)
-            self.cb["on_error"](f"Encoding failed: {exc}. Raw audio kept at {fallback.name}.")
+            try:
+                shutil.move(master, fallback)
+                where = f"Raw audio kept at {fallback.name}."
+            except OSError:
+                where = f"Raw audio left in {self.workdir}."
+            self.cb["on_error"](f"Encoding failed: {exc}. {where}")
             self.cb["on_status"]("")
             return
 
@@ -204,6 +237,7 @@ class Session:
         final_model = self._final_model()
         if final_model is None or not whisper.have_binaries()[1]:
             self._cleanup()
+            self.cb["on_saved"](saved, True)   # nothing more will happen to this take
             self.cb["on_status"]("")
             return
         if self.recorder.max_peak < 0.01:
@@ -225,7 +259,7 @@ class Session:
                 transcript_path.write_text(text)
             elif not provisional:
                 transcript_path.write_text("")
-        except (RuntimeError, OSError, ValueError) as exc:
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
             self.cb["on_error"](f"Final transcription failed: {exc}")
         finally:
             self._cleanup()

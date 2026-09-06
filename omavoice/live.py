@@ -17,20 +17,24 @@ class LiveTranscriber:
         self.on_text = on_text
         self.on_error = on_error
         self._stop = threading.Event()
+        self._flush = True
         self._thread = None
         self.last_text = ""
         self.texts = []
         self.busy = False
 
     def start(self) -> None:
+        self.recorder.set_buffering(True)
         self._thread = threading.Thread(target=self._run, name="omavoice-live", daemon=True)
         self._thread.start()
 
     def stop(self, flush: bool = True) -> None:
+        self._flush = flush
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=180 if flush else 5)
+            self._thread.join(timeout=300 if flush else 5)
             self._thread = None
+        self.recorder.set_buffering(False)
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -44,7 +48,7 @@ class LiveTranscriber:
                 time.sleep(0.2)
         # Flush what is left once recording has stopped.
         rest = self.recorder.take_pending()
-        if len(rest) >= pcm.seconds_to_bytes(MIN_FLUSH_SECONDS):
+        if self._flush and len(rest) >= pcm.seconds_to_bytes(MIN_FLUSH_SECONDS):
             self._process(rest)
 
     def _process(self, chunk: bytes) -> None:
