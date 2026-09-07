@@ -105,16 +105,72 @@ class OmavoiceApp(Adw.Application):
 
         PreferencesDialog(self.settings, changed, busy=self.busy).present(self.window)
 
+    ABOUT_LINKS = (
+        ("Source code", "https://github.com/nixfred/omavoice"),
+        ("nixfred.com", "https://nixfred.com"),
+        ("Report an Issue", "https://github.com/nixfred/omavoice/issues"),
+    )
+
     def _about(self, *_):
-        about = Adw.AboutDialog(application_name=APP_NAME, application_icon=APP_ID, version=__version__,
-                                developer_name="Fred Nix", license_type=Gtk.License.MIT_X11,
-                                issue_url="https://github.com/nixfred/omavoice/issues",
-                                comments="Record from any input and get a transcript beside every file.")
-        # Named rows rather than `website`, which libadwaita renders as an
-        # unlabelled "Website" and gives no clue where it goes.
-        about.add_link("Source code", "https://github.com/nixfred/omavoice")
-        about.add_link("nixfred.com", "https://nixfred.com")
-        about.present(self.window)
+        """A hand-built About rather than Adw.AboutDialog.
+
+        AboutDialog only takes extra links through add_link(), which files them
+        on its Details subpage, and its front-page rows come from fixed
+        properties whose labels cannot be changed. The links belong on the face
+        of the dialog, so this lays them out directly.
+        """
+        dialog = Adw.Dialog(title=f"About {APP_NAME}", content_width=400)
+        view = Adw.ToolbarView()
+        dialog.set_child(view)
+        view.add_top_bar(Adw.HeaderBar(show_title=False))
+
+        body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6,
+                       margin_top=4, margin_bottom=26, margin_start=22, margin_end=22)
+        view.set_content(body)
+
+        icon = Gtk.Image.new_from_icon_name(APP_ID)
+        icon.set_pixel_size(96)
+        icon.set_margin_bottom(10)
+        body.append(icon)
+
+        title = Gtk.Label(label=APP_NAME)
+        title.add_css_class("title-1")
+        body.append(title)
+
+        developer = Gtk.Label(label="Fred Nix")
+        developer.add_css_class("dim-label")
+        body.append(developer)
+
+        version = Gtk.Label(label=__version__, margin_top=4, margin_bottom=14)
+        version.add_css_class("caption")
+        version.add_css_class("accent")
+        body.append(version)
+
+        comments = Gtk.Label(label="Record from any input and get a transcript beside every file.",
+                             wrap=True, justify=Gtk.Justification.CENTER, margin_bottom=14)
+        body.append(comments)
+
+        links = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        links.add_css_class("boxed-list")
+        body.append(links)
+        for label, uri in self.ABOUT_LINKS:
+            row = Adw.ActionRow(title=label, activatable=True)
+            row.add_suffix(Gtk.Image.new_from_icon_name("adw-external-link-symbolic"))
+            row.connect("activated", self._open_uri, uri)
+            links.append(row)
+
+        legal = Gtk.Label(label="MIT License", margin_top=14)
+        legal.add_css_class("dim-label")
+        legal.add_css_class("caption")
+        body.append(legal)
+
+        dialog.present(self.window)
+
+    def _open_uri(self, _row, uri):
+        try:
+            subprocess.Popen(["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as exc:
+            print(f"could not open {uri}: {exc}", file=sys.stderr)
 
     def notify_saved(self, saved):
         note = Gio.Notification.new("Recording saved")

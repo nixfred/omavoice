@@ -501,3 +501,12 @@ class RenameRuleTests(unittest.TestCase):
         self.assertIsNotNone(rename_problem(".hidden"))
         self.assertIsNotNone(rename_problem("bell\x07"))
         self.assertIsNotNone(rename_problem("x" * 201))
+
+
+class AboutLinkTests(unittest.TestCase):
+    def test_the_links_are_on_the_dialog_itself(self):
+        from omavoice.app import OmavoiceApp
+        labels = [label for label, _ in OmavoiceApp.ABOUT_LINKS]
+        self.assertEqual(labels, ["Source code", "nixfred.com", "Report an Issue"])
+        for _, uri in OmavoiceApp.ABOUT_LINKS:
+            self.assertTrue(uri.startswith("https://"), uri)
