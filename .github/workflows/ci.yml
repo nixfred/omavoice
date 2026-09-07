@@ -20,7 +20,7 @@ jobs:
       - name: Runtime the app actually imports
         run: pacman -Sy --noconfirm --needed python python-gobject glib2 gtk4 libadwaita git
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Confirm the box really is bare
         run: |
@@ -45,7 +45,7 @@ jobs:
     steps:
       - run: pacman -Syu --noconfirm --needed git sudo namcap
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: makepkg refuses to run as root
         run: |
