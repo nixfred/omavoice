@@ -13,14 +13,3 @@ def encode(raw_path: Path, out_path: Path, fmt: AudioFormat) -> None:
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip()[-400:] or f"ffmpeg exited with {proc.returncode}")
-
-
-def duration_of(path: Path) -> float:
-    try:
-        out = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=10, check=True,
-        ).stdout.strip()
-        return float(out)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return 0.0

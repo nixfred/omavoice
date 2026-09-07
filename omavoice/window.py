@@ -2,7 +2,6 @@
 
 import subprocess
 import threading
-from datetime import datetime
 from pathlib import Path
 
 import gi
@@ -11,7 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
-from omavoice import APP_NAME, library, sources, whisper  # noqa: E402
+from omavoice import APP_NAME, library, sources  # noqa: E402
 from omavoice.formats import FORMATS, by_key, index_of  # noqa: E402
 from omavoice.pcm import format_clock  # noqa: E402
 from omavoice.session import Session  # noqa: E402
@@ -33,6 +32,8 @@ SILENCE_SECONDS = 6.0
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app, settings, engine):
         super().__init__(application=app, title=APP_NAME)
+        self.app = app          # get_application() returns None once closed
+        self.closed = False
         self.settings = settings
         self.engine = engine
         self.session = None
@@ -293,7 +294,7 @@ class MainWindow(Adw.ApplicationWindow):
             "on_saved": lambda saved, final: GLib.idle_add(self._on_saved, take, saved, final),
             "on_error": lambda text: GLib.idle_add(self._on_error, text),
             "on_engine": lambda state: GLib.idle_add(self._on_engine, take, state),
-            "on_busy": self.get_application().busy,
+            "on_busy": self.app.busy,
         }
         self.session = Session(self.settings, self.engine, callbacks)
         try:
@@ -376,6 +377,8 @@ class MainWindow(Adw.ApplicationWindow):
     # -- callbacks from the session -----------------------------------
 
     def _set_status(self, text):
+        if self.closed:
+            return False
         self.status.set_label(text or "")
         return False
 
@@ -387,10 +390,16 @@ class MainWindow(Adw.ApplicationWindow):
         return False
 
     def _on_error(self, text):
+        if self.closed:
+            return False
         self.toast_overlay.add_toast(Adw.Toast.new(text))
         return False
 
     def _on_saved(self, take, saved, final):
+        if self.closed:
+            if not final:
+                self.app.notify_saved(saved)
+            return False
         if final:
             self.pending_final.discard(saved.audio_path)
             self.refresh_library()
@@ -402,7 +411,7 @@ class MainWindow(Adw.ApplicationWindow):
         toast.set_button_label("Open folder")
         toast.set_action_name("app.open-folder")
         self.toast_overlay.add_toast(toast)
-        self.get_application().notify_saved(saved)
+        self.app.notify_saved(saved)
         if take is self.take:
             # Only clear the title box if it still belongs to this take; the
             # user may already be typing a name for the next one.
@@ -575,5 +584,6 @@ class MainWindow(Adw.ApplicationWindow):
             return True
         self.settings.window_width, self.settings.window_height = self.get_default_size()
         self.settings.save()
+        self.closed = True      # workers may still be saving; they must not touch widgets
         return False
 

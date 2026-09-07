@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.3-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.4-e01b24?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-ffd166?style=for-the-badge"></a>
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793d1?style=for-the-badge&logo=archlinux&logoColor=white">
   <img alt="GTK4 + libadwaita" src="https://img.shields.io/badge/GTK4-libadwaita-7c4dff?style=for-the-badge&logo=gnome&logoColor=white">
@@ -161,7 +161,9 @@ flowchart LR
     PW --> MASTER[(master.raw)]
     PW -. every few seconds .-> CUT[cut at the<br/>quietest point]
     CUT --> RS[ffmpeg → 16 kHz]
-    RS --> WS[whisper-server<br/>model stays loaded]
+    RS --> VAD{Silero VAD<br/>any speech?}
+    VAD -- no --> DROP[dropped, never<br/>reaches whisper]
+    VAD -- yes --> WS[whisper-server<br/>model stays loaded]
     WS --> LIVE[📝 Live transcript]
     MASTER -- on stop --> ENC[ffmpeg encode]
     ENC --> AUDIO[🎵 2026-09-05_14-32-10.opus]
@@ -200,7 +202,18 @@ Settings live in `~/.config/omavoice/config.json`. The whisper server log is in
 
 ```bash
 python -m unittest discover -s tests
+python -m omavoice          # run your working copy
 ```
+
+The PKGBUILD builds the tagged release, not your working copy, so `makepkg`
+only works for a version that has been tagged. Bumping `__version__` means
+tagging before you can build a package of it. For everyday development run
+`python -m omavoice` from the checkout instead.
+
+The suite must stay hermetic: it may not depend on whisper.cpp, a model, a
+sound server, or a network being present, because `check()` runs during
+`makepkg` on machines that have none of them. Stub the binary, as the VAD
+tests do.
 
 The PKGBUILD runs the test suite during the build. Pure logic (PCM analysis, chunk cut
 points, naming, source parsing, config validation, transcript rendering) is covered by

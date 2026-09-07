@@ -54,7 +54,18 @@ class NamingTests(unittest.TestCase):
     def test_slugify(self):
         self.assertEqual(slugify("  Stand-up: notes / plan!  "), "Stand-up-notes-plan")
         self.assertEqual(slugify(""), "")
-        self.assertEqual(slugify("x" * 200), "x" * 60)
+        self.assertEqual(slugify("x" * 200), "x" * 80)
+
+    def test_slugify_keeps_unicode_but_drops_separators(self):
+        self.assertEqual(slugify("Ünïcödé ✨ 日本語"), "Ünïcödé-日本語")
+        self.assertEqual(slugify("../../etc/passwd"), "etc-passwd")
+        self.assertEqual(slugify("a\x00b"), "a-b")
+        self.assertEqual(slugify("...."), "")
+        for hostile in ("../../etc/passwd", "a/b", "x" * 300, "日" * 200, "\n\t"):
+            slug = slugify(hostile)
+            self.assertNotIn("/", slug)
+            self.assertFalse(slug.startswith("."))
+            self.assertLessEqual(len(slug.encode("utf-8")), 80)
 
     def test_basename(self):
         when = datetime(2026, 9, 5, 14, 32, 10)
@@ -156,13 +167,14 @@ class RecorderCommandTests(unittest.TestCase):
 
 
 class SpeechGateTests(unittest.TestCase):
-    def test_click_in_silence_is_not_speech(self):
-        data = silence(2.0) + tone(0.05, amplitude=0.9) + silence(2.0)
-        self.assertFalse(pcm.has_speech(data))
+    def test_dead_air_is_skipped_before_the_detector(self):
+        self.assertTrue(pcm.is_silent(silence(2.0)))
 
-    def test_sustained_signal_is_speech(self):
-        data = silence(1.0) + tone(1.0, amplitude=0.2) + silence(1.0)
-        self.assertTrue(pcm.has_speech(data))
+    def test_a_short_utterance_still_reaches_the_detector(self):
+        # Judging by loudness alone would drop this: it is mostly silence by
+        # duration, but it is exactly what a one-word answer looks like.
+        data = silence(3.0) + tone(0.4, amplitude=0.3) + silence(3.0)
+        self.assertFalse(pcm.is_silent(data))
 
     def test_dedupe(self):
         from omavoice.whisper import dedupe_segments
@@ -256,7 +268,7 @@ class VadTests(unittest.TestCase):
     def test_no_segments(self):
         from omavoice import vad
         self.assertEqual(vad.analyze(self.NONE), [])
-        self.assertEqual(vad.speech_seconds(self.NONE), 0.0)
+        self.assertEqual(vad.speech_seconds(vad.analyze(self.NONE)), 0.0)
 
     def test_unreadable_output_is_not_silence(self):
         from omavoice import vad
@@ -284,10 +296,11 @@ class VadTests(unittest.TestCase):
 
     def test_centiseconds_become_seconds(self):
         from omavoice import vad
-        self.assertEqual(vad.parse_segments(self.ONE), [(0.0, 1.09)])
-        self.assertAlmostEqual(vad.speech_seconds(self.ONE), 1.09)
-        self.assertEqual(len(vad.parse_segments(self.THREE)), 3)
-        self.assertAlmostEqual(vad.speech_seconds(self.THREE), 1.50 + 2.16 + 2.35)
+        self.assertEqual(vad.analyze(self.ONE), [(0.0, 1.09)])
+        self.assertAlmostEqual(vad.speech_seconds(vad.analyze(self.ONE)), 1.09)
+        self.assertEqual(len(vad.analyze(self.THREE)), 3)
+        self.assertAlmostEqual(vad.speech_seconds(vad.analyze(self.THREE)), 1.50 + 2.16 + 2.35)
+        self.assertEqual(vad.speech_seconds(None), 0.0)
 
     def test_gate_fails_open_without_a_model(self):
         from omavoice.vad import SpeechGate
@@ -386,3 +399,84 @@ class SessionIsolationTests(unittest.TestCase):
         session.live_model = mine
         session.engine.model = Model(Path("/models/ggml-large-v3.bin"))
         self.assertEqual(session._final_model(), mine)
+
+
+class NonBlockingTests(unittest.TestCase):
+    def test_engine_shutdown_does_not_need_the_lock(self):
+        from omavoice.session import Engine
+        engine = Engine()
+        engine._lock.acquire()          # as if ensure() were loading a model
+        try:
+            engine.shutdown()           # must not deadlock
+            self.assertTrue(engine.closed)
+        finally:
+            engine._lock.release()
+
+    def test_stop_returns_without_waiting_for_the_save(self):
+        import inspect
+        from omavoice.session import Session
+        src = inspect.getsource(Session.stop)
+        self.assertIn("Thread", src)
+        self.assertNotIn("self.recorder.stop()", src)
+
+
+class DownloadTests(unittest.TestCase):
+    def test_a_missing_curl_becomes_a_clean_error_and_leaves_nothing(self):
+        from omavoice import whisper
+        with tempfile.TemporaryDirectory() as d:
+            models = Path(d) / "models"
+            with mock.patch.object(whisper, "data_dir", return_value=Path(d)), \
+                    mock.patch.object(whisper.subprocess, "run", side_effect=OSError("no curl")):
+                with self.assertRaises(RuntimeError):
+                    whisper.download_model("tiny.en")
+            self.assertEqual(list(models.glob("*.part")), [])
+
+    def test_a_failed_commit_becomes_a_clean_error_and_leaves_nothing(self):
+        from omavoice import whisper
+        with tempfile.TemporaryDirectory() as d:
+            models = Path(d) / "models"
+            ok = mock.Mock(returncode=0, stdout="", stderr="")
+            with mock.patch.object(whisper, "data_dir", return_value=Path(d)), \
+                    mock.patch.object(whisper.subprocess, "run", return_value=ok), \
+                    mock.patch.object(whisper.os, "replace", side_effect=OSError("read-only")):
+                with self.assertRaises(RuntimeError):
+                    whisper.download_model("tiny.en")
+            self.assertEqual(list(models.glob("*.part")), [])
+
+
+class MediaOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        from omavoice import session as session_module
+        self.mod = session_module
+        self.mod._media_owner = None
+        self.addCleanup(setattr, self.mod, "_media_owner", None)
+
+    def _session(self):
+        from omavoice.config import Settings
+        from omavoice.session import Engine, Session
+        return Session(Settings(), Engine(), _null_callbacks())
+
+    def test_a_later_take_inherits_the_paused_players(self):
+        from omavoice import mpris
+        first, second = self._session(), self._session()
+        with mock.patch.object(mpris, "pause_playing", return_value=["org.mpris.a"]):
+            first._take_media_ownership()
+            self.assertEqual(first.paused_players, ["org.mpris.a"])
+            with mock.patch.object(mpris, "pause_playing", return_value=[]):
+                second._take_media_ownership()
+        # the handover moved the players, so the first take cannot resume them
+        self.assertEqual(first.paused_players, [])
+        self.assertEqual(second.paused_players, ["org.mpris.a"])
+
+    def test_only_the_owner_resumes(self):
+        from omavoice import mpris
+        first, second = self._session(), self._session()
+        with mock.patch.object(mpris, "pause_playing", return_value=["org.mpris.a"]):
+            first._take_media_ownership()
+            with mock.patch.object(mpris, "pause_playing", return_value=[]):
+                second._take_media_ownership()
+        with mock.patch.object(mpris, "resume") as resumed:
+            first._release_media()          # the older take finishing mid-recording
+            resumed.assert_not_called()
+            second._release_media()
+            resumed.assert_called_once_with(["org.mpris.a"])

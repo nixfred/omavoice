@@ -103,7 +103,7 @@ class OmavoiceApp(Adw.Application):
             if key == "recordings_dir" and self.window is not None:
                 self.window.refresh_library()
 
-        PreferencesDialog(self.settings, changed).present(self.window)
+        PreferencesDialog(self.settings, changed, busy=self.busy).present(self.window)
 
     def _about(self, *_):
         about = Adw.AboutDialog(application_name=APP_NAME, application_icon=APP_ID, version=__version__,

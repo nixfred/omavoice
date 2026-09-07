@@ -55,12 +55,9 @@ def analyze(output: str):
     return spans
 
 
-def parse_segments(output: str) -> list:
-    return analyze(output) or []
-
-
-def speech_seconds(output: str) -> float:
-    return sum(end - start for start, end in parse_segments(output))
+def speech_seconds(spans) -> float:
+    """Total speech in a span list from analyze(). None (no answer) counts as zero."""
+    return sum(end - start for start, end in spans or ())
 
 
 class SpeechGate:
@@ -91,8 +88,8 @@ class SpeechGate:
         tmp_name = None
         try:
             with tempfile.NamedTemporaryFile(prefix="omavoice-vad-", suffix=".wav", delete=False) as fh:
+                tmp_name = fh.name      # recorded first: a failed write still needs unlinking
                 fh.write(wav_bytes)
-                tmp_name = fh.name
             proc = subprocess.run(
                 [BINARY, "-vm", str(self.model_path), "-t", str(self.threads), "-np",
                  "-vt", THRESHOLD, "-vsd", MIN_SILENCE_MS, "-f", tmp_name],
@@ -114,7 +111,7 @@ class SpeechGate:
         if spans is None:
             self.last_error = "could not read detector output"
             return True
-        if sum(end - start for start, end in spans) >= self.min_seconds:
+        if speech_seconds(spans) >= self.min_seconds:
             return True
         self.rejected += 1
         return False

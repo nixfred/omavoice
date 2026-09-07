@@ -4,15 +4,20 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+# \w keeps unicode letters and digits, so an accented or Japanese title
+# survives; separators, control characters and emoji do not.
+_UNSAFE = re.compile(r"[^\w.-]+")
 _DASHES = re.compile(r"-{2,}")
-MAX_TITLE = 60
+MAX_TITLE_BYTES = 80
 
 
 def slugify(title: str) -> str:
     text = _UNSAFE.sub("-", (title or "").strip())
     text = _DASHES.sub("-", text).strip("-.")
-    return text[:MAX_TITLE].rstrip("-.")
+    # Filesystems cap a name in bytes, not characters, and one character here
+    # can be four bytes.
+    trimmed = text.encode("utf-8")[:MAX_TITLE_BYTES].decode("utf-8", errors="ignore")
+    return trimmed.strip("-.")
 
 
 def basename(when: datetime, title: str = "") -> str:

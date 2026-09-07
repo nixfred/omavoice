@@ -24,6 +24,10 @@ from omavoice.recorder import Recorder, RecorderError
 MIN_SECONDS = 0.5
 
 
+_media_lock = threading.Lock()
+_media_owner = None          # the take that currently owns the paused players
+
+
 def is_microphone(source_name: str) -> bool:
     return not (source_name.startswith("app:") or source_name.endswith(".monitor"))
 
@@ -43,6 +47,7 @@ class Engine:
         self.model = None
         self.key = None
         self.vad_model = None
+        self.closed = False
         self._lock = threading.Lock()
         self.error = None
 
@@ -69,20 +74,31 @@ class Engine:
                                                 vad_model=self.vad_model)
             self.model = model
             self.key = key
+            server = self.server
             try:
-                self.server.start()
-                self.error = None
+                server.start()
             except RuntimeError as exc:
                 self.error = str(exc)
                 self.server = None
                 return None
-            return self.server
+            if self.closed:      # shutdown happened while the model loaded
+                server.stop()
+                self.server = None
+                return None
+            self.error = None
+            return server
 
     def shutdown(self) -> None:
-        with self._lock:
-            if self.server is not None:
-                self.server.stop()
-                self.server = None
+        """Stop the server without taking the lock.
+
+        ensure() holds the lock across a model download and server start, which
+        can be a minute or more. Quitting must not wait for that, so the server
+        is terminated directly and a start still in flight is told to stand down.
+        """
+        self.closed = True
+        server, self.server = self.server, None
+        if server is not None:
+            server.stop()
 
 
 class Session:
@@ -132,7 +148,7 @@ class Session:
         if self.settings.pause_media and is_microphone(source_name):
             # Only a mic take benefits from silencing players. Capturing an app
             # or the system output needs that audio to keep playing.
-            self.paused_players = mpris.pause_playing()
+            self._take_media_ownership()
         if live:
             self.enable_live()
 
@@ -164,12 +180,14 @@ class Session:
                                  gate=gate)
         with self._live_lock:
             # Stop may have run while the model was loading. Publishing the
-            # worker now would leave one nobody ever stops.
+            # worker now would leave one nobody ever stops. Starting it inside
+            # the lock also means stop() can never see a worker whose thread
+            # has not been started yet, which join() refuses.
             if self._stopped or not self.recorder.running or self.live is not None:
                 self.cb["on_engine"]("ready")
                 return
+            worker.start()
             self.live = worker
-        worker.start()
         self.cb["on_engine"]("ready")
 
     def pause(self) -> None:
@@ -195,23 +213,68 @@ class Session:
         return self.recorder.error
 
     def stop(self) -> None:
-        """Stop capture; encoding and transcription continue on a worker thread."""
+        """Return at once. Closing the capture and saving both run on a worker.
+
+        recorder.stop() joins threads with timeouts and mpris.resume() makes
+        D-Bus calls, neither of which belongs on the GTK main loop.
+        """
         with self._live_lock:
             self._stopped = True
-        total = self.recorder.stop()
-        mpris.resume(self.paused_players)
-        self.paused_players = []
-        threading.Thread(target=self._finish_guarded, args=(total,), name="omavoice-finish", daemon=True).start()
+        threading.Thread(target=self._stop_and_finish, name="omavoice-finish", daemon=True).start()
+
+    def _stop_and_finish(self) -> None:
+        """Close the capture and save. Nothing here may escape.
+
+        An error closing the file (a full disk, for instance) must still let
+        the take be saved, restore the media players and release the hold that
+        keeps the application alive.
+        """
+        total = self.recorder.bytes_written
+        try:
+            total = self.recorder.stop()
+        except Exception as exc:  # noqa: BLE001 - a broken close must not lose the take
+            self.cb["on_error"](f"Could not close the recording cleanly: {exc}")
+        finally:
+            self._release_media()
+        self._finish_guarded(total)
 
     def discard(self) -> None:
         with self._live_lock:
             self._stopped = True
-        self.recorder.stop()
-        mpris.resume(self.paused_players)
+        try:
+            self.recorder.stop()
+        except Exception:  # noqa: BLE001 - discarding, so the error changes nothing
+            pass
+        self._release_media()
         if self.live is not None:
             self.live.stop(flush=False)
         shutil.rmtree(self.workdir, ignore_errors=True)
         self._busy(-1)
+
+    def _take_media_ownership(self) -> None:
+        """Pause players, inheriting any a previous take is still holding.
+
+        Without the handover, a take that is still encoding would resume the
+        players in the middle of the take that followed it.
+        """
+        global _media_owner
+        with _media_lock:
+            inherited = []
+            if _media_owner is not None:
+                inherited = _media_owner.paused_players
+                _media_owner.paused_players = []
+            fresh = [p for p in mpris.pause_playing() if p not in inherited]
+            self.paused_players = inherited + fresh
+            _media_owner = self
+
+    def _release_media(self) -> None:
+        global _media_owner
+        with _media_lock:
+            if _media_owner is not self:
+                return          # a later take took over; it will resume them
+            players, self.paused_players = self.paused_players, []
+            _media_owner = None
+        mpris.resume(players)
 
     def _busy(self, delta: int) -> None:
         hook = self.cb.get("on_busy")

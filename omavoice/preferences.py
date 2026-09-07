@@ -12,11 +12,13 @@ from omavoice import whisper  # noqa: E402
 
 
 class PreferencesDialog(Adw.PreferencesDialog):
-    def __init__(self, settings, on_changed):
+    def __init__(self, settings, on_changed, busy=None):
         super().__init__(title="Preferences")
         self.settings = settings
         self.on_changed = on_changed
+        self.busy = busy or (lambda delta: None)
         self.models = whisper.find_models()
+        self._refilling = False
 
         page = Adw.PreferencesPage(title="General", icon_name="audio-input-microphone-symbolic")
         self.add(page)
@@ -85,11 +87,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
     # -- helpers -------------------------------------------------------
 
     def _fill_model_rows(self):
-        labels = [m.label for m in self.models] or ["No models found"]
-        self.live_row.set_model(Gtk.StringList.new(["Automatic (first available)"] + labels))
-        self.final_row.set_model(Gtk.StringList.new(["Same as live model"] + labels))
-        self.live_row.set_selected(self._index_for(self.settings.live_model, "auto"))
-        self.final_row.set_selected(self._index_for(self.settings.final_model, "same"))
+        """Rebuild both lists without the rebuild itself looking like a choice.
+
+        Replacing a ComboRow model resets its selection, which would otherwise
+        fire the handlers and persist "auto"/"same" over the user's picks.
+        """
+        live_setting, final_setting = self.settings.live_model, self.settings.final_model
+        self._refilling = True
+        try:
+            labels = [m.label for m in self.models] or ["No models found"]
+            self.live_row.set_model(Gtk.StringList.new(["Automatic (first available)"] + labels))
+            self.final_row.set_model(Gtk.StringList.new(["Same as live model"] + labels))
+            self.live_row.set_selected(self._index_for(live_setting, "auto"))
+            self.final_row.set_selected(self._index_for(final_setting, "same"))
+        finally:
+            self._refilling = False
 
     def _index_for(self, setting, sentinel):
         if setting == sentinel or not self.models:
@@ -100,10 +112,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
         return 0
 
     def _on_live_model(self, row, _):
+        if self._refilling:
+            return          # rebuilding the list, not a choice the user made
         idx = row.get_selected()
         self._set("live_model", "auto" if idx == 0 or not self.models else str(self.models[idx - 1].path))
 
     def _on_final_model(self, row, _):
+        if self._refilling:
+            return
         idx = row.get_selected()
         self._set("final_model", "same" if idx == 0 or not self.models else str(self.models[idx - 1].path))
 
@@ -125,9 +141,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
             try:
                 whisper.download_model(name)
                 GLib.idle_add(self._downloaded, button, name, None)
-            except RuntimeError as exc:
+            except Exception as exc:  # noqa: BLE001 - the button must never stick
                 GLib.idle_add(self._downloaded, button, name, str(exc))
+            finally:
+                self.busy(-1)
 
+        # Hold the application open: a download with no recording in progress
+        # would otherwise be killed mid-file when the window closes.
+        self.busy(+1)
         threading.Thread(target=work, daemon=True).start()
 
     def _downloaded(self, button, name, error):

@@ -399,11 +399,16 @@ def download_model(name: str, timeout: float | None = None) -> Path:
     cmd = ["curl", "-L", "--fail", "--silent", "--show-error", "-o", str(tmp), url]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError("download timed out")
-    if proc.returncode != 0:
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError(proc.stderr.strip()[-300:] or "download failed")
-    os.replace(tmp, target)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip()[-300:] or "download failed")
+        os.replace(tmp, target)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("download timed out") from exc
+    except OSError as exc:
+        # curl missing, or the destination became unwritable mid-download
+        raise RuntimeError(f"could not download: {exc}") from exc
+    finally:
+        # A success has already moved it; anything else must not leave a
+        # part-file behind, which for a large model is gigabytes.
+        Path(tmp).unlink(missing_ok=True)
     return target

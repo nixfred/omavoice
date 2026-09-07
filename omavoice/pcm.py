@@ -37,26 +37,6 @@ def is_silent(block: bytes, threshold: float = 0.01) -> bool:
     return peak(block) < threshold
 
 
-def has_speech(block: bytes, window_ms: int = 100, threshold: float = 0.02, min_fraction: float = 0.08) -> bool:
-    """True when at least `min_fraction` of the windows carry signal above `threshold`.
-
-    A single click or a breath should not trigger a transcription of an
-    otherwise empty chunk; whisper invents words on near-silence.
-    """
-    window = seconds_to_bytes(window_ms / 1000.0)
-    if window <= 0 or len(block) < window:
-        return not is_silent(block, threshold)
-    loud = 0
-    count = 0
-    offset = 0
-    while offset + window <= len(block):
-        count += 1
-        if peak(block[offset:offset + window]) >= threshold:
-            loud += 1
-        offset += window
-    return count > 0 and loud / count >= min_fraction
-
-
 def seconds_to_bytes(seconds: float) -> int:
     n = int(seconds * BYTES_PER_SECOND)
     return n - (n % BYTES_PER_SAMPLE)

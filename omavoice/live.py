@@ -25,8 +25,9 @@ class LiveTranscriber:
 
     def start(self) -> None:
         self.recorder.set_buffering(True)
-        self._thread = threading.Thread(target=self._run, name="omavoice-live", daemon=True)
-        self._thread.start()
+        thread = threading.Thread(target=self._run, name="omavoice-live", daemon=True)
+        thread.start()
+        self._thread = thread
 
     def stop(self, flush: bool = True) -> None:
         self._flush = flush
@@ -52,9 +53,11 @@ class LiveTranscriber:
             self._process(rest)
 
     def _process(self, chunk: bytes) -> None:
-        # Cheap early-out first: a muted or unplugged input is dead air, and
-        # this skips spawning ffmpeg and the detector for it.
-        if not pcm.has_speech(chunk):
+        # Cheap early-out for dead air only, which skips spawning ffmpeg and
+        # the detector for a muted or unplugged input. Anything with signal in
+        # it goes to Silero: judging speech by loudness drops short utterances,
+        # because a one-word answer is mostly silence by duration.
+        if pcm.is_silent(chunk):
             return
         self.busy = True
         try:
