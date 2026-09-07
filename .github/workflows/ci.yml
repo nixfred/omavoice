@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    # Deliberately a bare container: no whisper.cpp, no models, no sound server.
+    # check() runs during makepkg on machines exactly like this one, and a test
+    # that quietly depends on an installed binary breaks the install for
+    # everybody. That happened once; this job is why it should not happen twice.
+    name: Tests (nothing installed)
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - name: Runtime the app actually imports
+        run: pacman -Sy --noconfirm --needed python python-gobject glib2 gtk4 libadwaita git
+
+      - uses: actions/checkout@v4
+
+      - name: Confirm the box really is bare
+        run: |
+          for binary in whisper-cli whisper-server whisper-vad-speech-segments ffmpeg pactl pw-record; do
+            if command -v "$binary" >/dev/null; then
+              echo "::error::$binary is installed; this job must run without it"
+              exit 1
+            fi
+          done
+          echo "no speech, audio or media binaries present, as intended"
+
+      - name: Test suite
+        run: python -m unittest discover -s tests -v
+
+  package:
+    # Only on a tag: the PKGBUILD builds the tagged release, so there is nothing
+    # to build until the tag exists.
+    name: makepkg
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - run: pacman -Syu --noconfirm --needed git sudo namcap
+
+      - uses: actions/checkout@v4
+
+      - name: makepkg refuses to run as root
+        run: |
+          useradd -m builder
+          printf 'builder ALL=(ALL) NOPASSWD: ALL\n' >> /etc/sudoers
+          chown -R builder:builder .
+
+      - name: Build the package
+        run: sudo -u builder makepkg -s --noconfirm
+
+      - name: Inspect it
+        run: |
+          sudo -u builder namcap ./*.pkg.tar.zst || true
+          tar tf ./*.pkg.tar.zst | grep -E 'usr/bin/omavoice|omavoice/vad.py'

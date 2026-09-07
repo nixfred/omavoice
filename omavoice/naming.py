@@ -26,6 +26,24 @@ def basename(when: datetime, title: str = "") -> str:
     return f"{stamp}-{slug}" if slug else stamp
 
 
+def rename_problem(new_stem: str):
+    """Why this name cannot be used, or None when it is fine.
+
+    Renaming is deliberately more permissive than the slug applied to a title:
+    people should be able to name their own files. It still has to be a name
+    the filesystem and the file list can live with.
+    """
+    if "/" in new_stem:
+        return "A name cannot contain a slash."
+    if new_stem.startswith("."):
+        return "A name cannot start with a dot, or the recording becomes hidden."
+    if any(ord(c) < 32 for c in new_stem):
+        return "A name cannot contain control characters."
+    if len(new_stem.encode("utf-8")) > 200:
+        return "That name is too long."
+    return None
+
+
 def transcript_path_for(audio_path: Path) -> Path:
     return audio_path.with_suffix(".txt")
 

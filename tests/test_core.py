@@ -486,3 +486,18 @@ class ClockTests(unittest.TestCase):
     def test_the_idle_clock_reads_zero(self):
         # The window resets the label through the same formatter it ticks with.
         self.assertEqual(pcm.format_clock(0), "00:00:00")
+
+
+class RenameRuleTests(unittest.TestCase):
+    def test_names_a_person_should_be_allowed(self):
+        from omavoice.naming import rename_problem
+        for name in ("JFK — inaugural (1961)", "standup 2026-09-07", "日本語のメモ", "a.b.c", "x" * 60):
+            self.assertIsNone(rename_problem(name), name)
+
+    def test_names_that_would_cause_trouble(self):
+        from omavoice.naming import rename_problem
+        self.assertIsNotNone(rename_problem("../escape"))
+        self.assertIsNotNone(rename_problem("a/b"))
+        self.assertIsNotNone(rename_problem(".hidden"))
+        self.assertIsNotNone(rename_problem("bell\x07"))
+        self.assertIsNotNone(rename_problem("x" * 201))

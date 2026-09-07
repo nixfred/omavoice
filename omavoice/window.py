@@ -12,6 +12,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from omavoice import APP_NAME, library, sources  # noqa: E402
 from omavoice.formats import FORMATS, by_key, index_of  # noqa: E402
+from omavoice.naming import rename_problem  # noqa: E402
 from omavoice.pcm import format_clock  # noqa: E402
 from omavoice.session import Session  # noqa: E402
 
@@ -530,7 +531,12 @@ class MainWindow(Adw.ApplicationWindow):
             if d.choose_finish(result) != "rename":
                 return
             new_stem = entry.get_text().strip()
-            if not new_stem or new_stem == path.stem or "/" in new_stem:
+            if not new_stem or new_stem == path.stem:
+                return
+            problem = rename_problem(new_stem)
+            if problem:
+                # Say why, rather than appearing to ignore the button.
+                self._on_error(problem)
                 return
             target = path.with_name(new_stem + path.suffix)
             if target.exists() or target.with_suffix(".txt").exists():

@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.6-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.7-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nixfred/omavoice/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-ffd166?style=for-the-badge"></a>
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793d1?style=for-the-badge&logo=archlinux&logoColor=white">
   <img alt="GTK4 + libadwaita" src="https://img.shields.io/badge/GTK4-libadwaita-7c4dff?style=for-the-badge&logo=gnome&logoColor=white">
@@ -210,7 +211,9 @@ only works for a version that has been tagged. Bumping `__version__` means
 tagging before you can build a package of it. For everyday development run
 `python -m omavoice` from the checkout instead.
 
-The suite must stay hermetic: it may not depend on whisper.cpp, a model, a
+CI runs the suite in a bare Arch container with none of that installed, so a
+test that quietly depends on the machine fails there rather than in somebody's
+install. The suite must stay hermetic: it may not depend on whisper.cpp, a model, a
 sound server, or a network being present, because `check()` runs during
 `makepkg` on machines that have none of them. Stub the binary, as the VAD
 tests do.
