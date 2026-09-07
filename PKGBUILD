@@ -1,5 +1,4 @@
 # Maintainer: Fred Nix <frednix@gmail.com>
-# Build and install from a checkout:  git clone <repo> && cd omavoice && makepkg -si
 pkgname=omavoice
 pkgver=0.3.1
 pkgrel=1
@@ -22,25 +21,21 @@ depends=(
   'curl'
   'hicolor-icon-theme'
 )
+makedepends=('git')
 optdepends=(
   'voxtype: reuse its downloaded whisper models'
   'ggml-vulkan: GPU acceleration for whisper.cpp on machines with Vulkan'
 )
-source=()
-sha256sums=()
-
-pkgver() {
-  cd "$startdir"
-  python3 -c "import re,sys; print(re.search(r'__version__ = \"([^\"]+)\"', open('omavoice/__init__.py').read()).group(1))"
-}
+source=("$pkgname::git+$url.git#tag=v$pkgver")
+sha256sums=('SKIP')
 
 check() {
-  cd "$startdir"
+  cd "$srcdir/$pkgname"
   python3 -m unittest discover -s tests -q
 }
 
 package() {
-  cd "$startdir"
+  cd "$srcdir/$pkgname"
   install -d "$pkgdir/usr/lib/omavoice/omavoice"
   install -Dm644 omavoice/*.py -t "$pkgdir/usr/lib/omavoice/omavoice"
   install -Dm755 bin/omavoice "$pkgdir/usr/bin/omavoice"

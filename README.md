@@ -91,6 +91,10 @@ cd omavoice
 makepkg -si
 ```
 
+The PKGBUILD builds the latest tagged release rather than your working copy, so
+the same command gives everyone the same package and it works inside a clean
+chroot. To run your own edits, use `python -m omavoice` from the checkout.
+
 Omavoice then shows up in the Omarchy menu: press <kbd>Super</kbd>+<kbd>Space</kbd> and type its name.
 
 Everything it needs is in the official repositories:
