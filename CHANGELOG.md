@@ -2,6 +2,16 @@
 
 All notable changes to Omavoice. Dates are the day the tag was cut.
 
+## 0.3.10 — 2026-09-07
+
+- A linter now runs over the code, in CI as well as locally, with a config that
+  says which rules are deliberately off and why. The pass it flagged was mostly
+  cosmetic, but it did find the speech server's warm-up swallowing its failure
+  reason without recording it anywhere.
+- The README explains that the speech server is a child process, that it is
+  stopped when Omavoice exits however it exits, and that an orphan is cleared
+  on next launch. It shows up in `ps`, so it should be documented.
+
 ## 0.3.9 — 2026-09-07
 
 - The About dialog carries its links on its face: Source code, nixfred.com and

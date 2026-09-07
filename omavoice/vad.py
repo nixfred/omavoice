@@ -11,6 +11,7 @@ This wraps `whisper-vad-speech-segments`, which ships with whisper-cpp and
 runs the Silero model in roughly 200 ms for a seven second chunk.
 """
 
+import contextlib
 import os
 import re
 import shutil
@@ -100,10 +101,8 @@ class SpeechGate:
             return True
         finally:
             if tmp_name:
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_name)
-                except OSError:
-                    pass
         if proc.returncode != 0:
             self.last_error = (proc.stderr or "").strip()[-200:]
             return True

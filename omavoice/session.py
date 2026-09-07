@@ -4,6 +4,7 @@ No GTK here. The window hands in callbacks; every callback is invoked from
 a worker thread, so the window marshals them onto the main loop.
 """
 
+import contextlib
 import shutil
 import subprocess
 import tempfile
@@ -241,10 +242,9 @@ class Session:
     def discard(self) -> None:
         with self._live_lock:
             self._stopped = True
-        try:
+        # Discarding, so a failure to close changes nothing.
+        with contextlib.suppress(Exception):
             self.recorder.stop()
-        except Exception:  # noqa: BLE001 - discarding, so the error changes nothing
-            pass
         self._release_media()
         if self.live is not None:
             self.live.stop(flush=False)
@@ -369,10 +369,8 @@ class Session:
 
     def _cleanup(self) -> None:
         shutil.rmtree(self.workdir, ignore_errors=True)
-        try:
+        with contextlib.suppress(OSError):
             self.workdir.parent.rmdir()   # only succeeds when no other take is in flight
-        except OSError:
-            pass
 
     def _final_model(self):
         # This take's own live model, never whatever the shared engine has

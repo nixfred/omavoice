@@ -76,7 +76,8 @@ class Recorder:
         master_path.parent.mkdir(parents=True, exist_ok=True)
         self.master_path = master_path
         self._stderr_path = master_path.with_suffix(".pw-record.log")
-        self._file = open(master_path, "wb")
+        # Held open for the length of the recording, closed in stop().
+        self._file = open(master_path, "wb")  # noqa: SIM115
         self.bytes_written = 0
         self.last_peak = 0.0
         self.max_peak = 0.0
@@ -87,7 +88,7 @@ class Recorder:
             self._pending = bytearray()
 
         cmd = build_command(source_name)
-        stderr = open(self._stderr_path, "wb")
+        stderr = open(self._stderr_path, "wb")  # noqa: SIM115 - handed to the child, closed below
         try:
             self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr, stdin=subprocess.DEVNULL)
         except OSError as exc:

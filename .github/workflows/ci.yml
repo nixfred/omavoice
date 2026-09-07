@@ -35,6 +35,16 @@ jobs:
       - name: Test suite
         run: python -m unittest discover -s tests -v
 
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - run: pacman -Sy --noconfirm --needed ruff git
+      - uses: actions/checkout@v7
+      - name: ruff
+        run: ruff check omavoice bin tests
+
   package:
     # Only on a tag: the PKGBUILD builds the tagged release, so there is nothing
     # to build until the tag exists.

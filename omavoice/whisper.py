@@ -7,13 +7,14 @@ Two paths:
     accurate final transcript, so the server stays free for the next take.
 """
 
+import contextlib
 import http.client
 import io
 import json
 import os
 import shutil
-import socket
 import signal
+import socket
 import subprocess
 import tempfile
 import threading
@@ -57,7 +58,7 @@ class Model:
     @property
     def name(self) -> str:
         stem = self.path.stem
-        return stem[len("ggml-"):] if stem.startswith("ggml-") else stem
+        return stem.removeprefix("ggml-")
 
     @property
     def english_only(self) -> bool:
@@ -243,6 +244,7 @@ class WhisperServer:
         self.port = None
         self._proc = None
         self._registry_entry = None
+        self.warmup_error = None
         self._lock = threading.Lock()
         self._ready = threading.Event()
         self._failed = None
@@ -265,7 +267,7 @@ class WhisperServer:
         cmd = ["whisper-server", "-m", str(self.model.path), "--host", "127.0.0.1",
                "--port", str(self.port), "-t", str(self.threads), "-l", self.language, "-sns",
                *vad_args(self.vad_model)]
-        log = open(self.log_path, "wb")
+        log = open(self.log_path, "wb")  # noqa: SIM115 - handed to the child, closed below
         try:
             self._proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         except OSError as exc:
@@ -294,8 +296,8 @@ class WhisperServer:
         # First inference is slow while buffers are allocated; do it on silence now.
         try:
             self._post(_silent_wav(), {"response_format": "json", "temperature": "0.0"}, timeout=120)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - warm-up is best effort, but say why it failed
+            self.warmup_error = str(exc)
         self._ready.set()
 
     def _remember(self) -> None:
@@ -310,10 +312,8 @@ class WhisperServer:
     def _forget(self) -> None:
         entry = getattr(self, "_registry_entry", None)
         if entry is not None:
-            try:
+            with contextlib.suppress(OSError):
                 entry.unlink(missing_ok=True)
-            except OSError:
-                pass
             self._registry_entry = None
 
     def stop(self) -> None:

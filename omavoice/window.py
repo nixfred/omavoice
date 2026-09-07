@@ -92,7 +92,8 @@ class MainWindow(Adw.ApplicationWindow):
         # Input group --------------------------------------------------
         group = Adw.PreferencesGroup(title="Input")
         body.append(group)
-        self.source_row = Adw.ComboRow(title="Input", subtitle="Microphones, playing apps, and system audio")
+        self.source_row = Adw.ComboRow(title="Input",
+                                       subtitle="Microphones, playing apps, and system audio")
         refresh = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER,
                              tooltip_text="Rescan inputs")
         refresh.add_css_class("flat")
@@ -179,7 +180,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.transcript.set_left_margin(8)
         self.transcript.set_right_margin(8)
         tscroll.set_child(self.transcript)
-        self._end_mark = self.transcript.get_buffer().create_mark(None, self.transcript.get_buffer().get_end_iter(), False)
+        buffer = self.transcript.get_buffer()
+        self._end_mark = buffer.create_mark(None, buffer.get_end_iter(), False)
 
         # Recent recordings -------------------------------------------
         self.library_group = Adw.PreferencesGroup(title="Recent recordings",
@@ -300,7 +302,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.session = Session(self.settings, self.engine, callbacks)
         try:
             self.session.start(self.selected_source_name(), fmt, title, self.live_switch.get_active())
-        except Exception:  # error already reported through on_error
+        except Exception:  # noqa: BLE001 - start() already reported the reason through on_error
             self.session = None
             return
         self.state = "recording"

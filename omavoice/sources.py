@@ -4,7 +4,6 @@ import json
 import subprocess
 from dataclasses import dataclass
 
-
 APP_PREFIX = "app:"
 
 

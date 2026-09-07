@@ -4,8 +4,8 @@ import struct
 import tempfile
 import unittest
 from datetime import datetime
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 from omavoice import pcm
 from omavoice.config import Settings
@@ -242,7 +242,7 @@ class HardeningTests(unittest.TestCase):
         self.assertNotIn("-P", build_command("default"))
 
     def test_pending_buffer_is_opt_in_and_capped(self):
-        from omavoice.recorder import Recorder, PENDING_CAP_BYTES
+        from omavoice.recorder import PENDING_CAP_BYTES, Recorder
         r = Recorder()
         self.assertFalse(r.buffer_pending)
         r.set_buffering(True)
@@ -336,6 +336,7 @@ class VadTests(unittest.TestCase):
 class NoPromptTests(unittest.TestCase):
     def test_server_transcribe_takes_no_prompt(self):
         import inspect
+
         from omavoice.whisper import WhisperServer
         params = inspect.signature(WhisperServer.transcribe).parameters
         self.assertNotIn("prompt", params)
@@ -350,6 +351,7 @@ class NoPromptTests(unittest.TestCase):
 
 def inspect_source():
     import inspect
+
     from omavoice import live
     return inspect.getsource(live)
 
@@ -414,6 +416,7 @@ class NonBlockingTests(unittest.TestCase):
 
     def test_stop_returns_without_waiting_for_the_save(self):
         import inspect
+
         from omavoice.session import Session
         src = inspect.getsource(Session.stop)
         self.assertIn("Thread", src)
@@ -426,9 +429,9 @@ class DownloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             models = Path(d) / "models"
             with mock.patch.object(whisper, "data_dir", return_value=Path(d)), \
-                    mock.patch.object(whisper.subprocess, "run", side_effect=OSError("no curl")):
-                with self.assertRaises(RuntimeError):
-                    whisper.download_model("tiny.en")
+                    mock.patch.object(whisper.subprocess, "run", side_effect=OSError("no curl")), \
+                    self.assertRaises(RuntimeError):
+                whisper.download_model("tiny.en")
             self.assertEqual(list(models.glob("*.part")), [])
 
     def test_a_failed_commit_becomes_a_clean_error_and_leaves_nothing(self):
@@ -438,9 +441,9 @@ class DownloadTests(unittest.TestCase):
             ok = mock.Mock(returncode=0, stdout="", stderr="")
             with mock.patch.object(whisper, "data_dir", return_value=Path(d)), \
                     mock.patch.object(whisper.subprocess, "run", return_value=ok), \
-                    mock.patch.object(whisper.os, "replace", side_effect=OSError("read-only")):
-                with self.assertRaises(RuntimeError):
-                    whisper.download_model("tiny.en")
+                    mock.patch.object(whisper.os, "replace", side_effect=OSError("read-only")), \
+                    self.assertRaises(RuntimeError):
+                whisper.download_model("tiny.en")
             self.assertEqual(list(models.glob("*.part")), [])
 
 

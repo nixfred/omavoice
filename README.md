@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.9-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.10-e01b24?style=for-the-badge"></a>
   <a href="https://github.com/nixfred/omavoice/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nixfred/omavoice/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-ffd166?style=for-the-badge"></a>
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793d1?style=for-the-badge&logo=archlinux&logoColor=white">
@@ -194,6 +194,11 @@ flowchart LR
    background with Silero voice activity detection. The app holds itself alive until
    that is done, even if you close the window.
 
+The speech server is a child process (`whisper-server`) holding the model in
+memory, so it is stopped when Omavoice exits, including when it is killed rather
+than closed. If it is ever orphaned anyway, by a crash or a `kill -9`, the next
+launch finds it by recorded PID and stops it.
+
 Settings live in `~/.config/omavoice/config.json`. The whisper server log is in
 `~/.cache/omavoice/whisper-server.log`.
 
@@ -203,6 +208,7 @@ Settings live in `~/.config/omavoice/config.json`. The whisper server log is in
 
 ```bash
 python -m unittest discover -s tests
+ruff check omavoice bin tests
 python -m omavoice          # run your working copy
 ```
 

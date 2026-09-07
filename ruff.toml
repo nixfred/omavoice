@@ -1,0 +1,17 @@
+# Lint settings for Omavoice.
+target-version = "py313"
+line-length = 120
+
+[lint]
+select = ["E", "F", "W", "I", "B", "BLE", "C4", "UP", "SIM", "RUF", "FURB"]
+
+# Deliberately not enabled:
+#   DTZ  - recording filenames and the file list show local wall-clock time.
+#          A timezone-aware datetime would be wrong for both.
+#   S    - this app shells out to pw-record, ffmpeg and whisper constantly,
+#          with argument lists it builds itself. The subprocess rules fire on
+#          every one of them and would be silenced everywhere.
+#   ARG  - GTK callbacks are handed arguments they do not all use.
+
+[lint.isort]
+known-first-party = ["omavoice"]

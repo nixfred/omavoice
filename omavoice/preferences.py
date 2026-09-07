@@ -34,17 +34,21 @@ class PreferencesDialog(Adw.PreferencesDialog):
                                     active=settings.timestamps)
         self.ts_row.connect("notify::active", lambda r, _: self._set("timestamps", r.get_active()))
         files.add(self.ts_row)
-        self.media_row = Adw.SwitchRow(title="Pause media players while recording",
-                                       subtitle="Only for microphone takes. Players are left alone when recording an app or system audio.",
-                                       active=settings.pause_media)
+        self.media_row = Adw.SwitchRow(
+            title="Pause media players while recording",
+            subtitle="Only for microphone takes. Players are left alone when recording "
+                     "an app or system audio.",
+            active=settings.pause_media)
         self.media_row.connect("notify::active", lambda r, _: self._set("pause_media", r.get_active()))
         files.add(self.media_row)
 
-        speech = Adw.PreferencesGroup(title="Transcription",
-                                      description="Models are whisper.cpp ggml files. Omavoice looks in "
-                                                  "~/.local/share/omavoice/models and voxtype's model folder.")
+        speech = Adw.PreferencesGroup(
+            title="Transcription",
+            description="Models are whisper.cpp ggml files. Omavoice looks in "
+                        "~/.local/share/omavoice/models and voxtype's model folder.")
         page.add(speech)
-        self.live_row = Adw.ComboRow(title="Live caption model", subtitle="Smaller is faster; base.en is a good CPU choice")
+        self.live_row = Adw.ComboRow(title="Live caption model",
+                                     subtitle="Smaller is faster; base.en is a good CPU choice")
         self.final_row = Adw.ComboRow(title="Final transcript model", subtitle="Runs after you stop; can be larger")
         self._fill_model_rows()
         self.live_row.connect("notify::selected", self._on_live_model)
@@ -96,8 +100,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._refilling = True
         try:
             labels = [m.label for m in self.models] or ["No models found"]
-            self.live_row.set_model(Gtk.StringList.new(["Automatic (first available)"] + labels))
-            self.final_row.set_model(Gtk.StringList.new(["Same as live model"] + labels))
+            self.live_row.set_model(Gtk.StringList.new(["Automatic (first available)", *labels]))
+            self.final_row.set_model(Gtk.StringList.new(["Same as live model", *labels]))
             self.live_row.set_selected(self._index_for(live_setting, "auto"))
             self.final_row.set_selected(self._index_for(final_setting, "same"))
         finally:
