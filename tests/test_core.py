@@ -176,12 +176,12 @@ class SpeechGateTests(unittest.TestCase):
         data = silence(3.0) + tone(0.4, amplitude=0.3) + silence(3.0)
         self.assertFalse(pcm.is_silent(data))
 
-    def test_dedupe(self):
-        from omavoice.whisper import dedupe_segments
-        segs = [Segment(0, 1, "Same."), Segment(1, 2, "same."), Segment(2, 3, "Other."), Segment(3, 4, "Same.")]
-        out = dedupe_segments(segs)
-        self.assertEqual([s.text for s in out], ["Same.", "Other.", "Same."])
-        self.assertEqual(out[0].end, 2)
+    def test_repeated_speech_is_kept(self):
+        # Somebody saying the same thing three times must appear three times.
+        # This used to be collapsed as if it were a whisper hallucination.
+        from omavoice.whisper import render_transcript
+        segs = [Segment(0, 2, "No."), Segment(2, 4, "No."), Segment(4, 6, "No.")]
+        self.assertEqual(render_transcript(segs, False), "No. No. No.\n")
 
 
 class AppStreamTests(unittest.TestCase):

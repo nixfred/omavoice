@@ -352,18 +352,11 @@ def transcribe_file(raw_path: Path, model: Model, threads: int, language: str, w
             end=float(offsets.get("to", 0)) / 1000.0,
             text=text,
         ))
-    return dedupe_segments(segments)
-
-
-def dedupe_segments(segments: list) -> list:
-    """Collapse runs of identical text, whisper's signature on silence."""
-    out = []
-    for seg in segments:
-        if out and out[-1].text.strip().lower() == seg.text.strip().lower():
-            out[-1].end = seg.end
-            continue
-        out.append(seg)
-    return out
+    # Deliberately no de-duplication. Repeated identical segments used to be
+    # whisper looping on silence, but the VAD pass above means it is no longer
+    # handed silence, and people genuinely do repeat themselves. Collapsing
+    # them deleted real speech: three identical sentences became one.
+    return segments
 
 
 def render_transcript(segments: list, timestamps: bool) -> str:
