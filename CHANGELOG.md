@@ -2,6 +2,12 @@
 
 All notable changes to Omavoice. Dates are the day the tag was cut.
 
+## 0.3.8 — 2026-09-07
+
+- The About dialog names its links. The repository was there but rendered as an
+  unlabelled "Website" row that gave no clue where it went, and there was no
+  link to nixfred.com at all. Details now lists "Source code" and "nixfred.com".
+
 ## 0.3.7 — 2026-09-07
 
 - Renaming a recording now explains why a name is refused instead of appearing

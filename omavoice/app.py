@@ -108,9 +108,12 @@ class OmavoiceApp(Adw.Application):
     def _about(self, *_):
         about = Adw.AboutDialog(application_name=APP_NAME, application_icon=APP_ID, version=__version__,
                                 developer_name="Fred Nix", license_type=Gtk.License.MIT_X11,
-                                website="https://github.com/nixfred/omavoice",
                                 issue_url="https://github.com/nixfred/omavoice/issues",
                                 comments="Record from any input and get a transcript beside every file.")
+        # Named rows rather than `website`, which libadwaita renders as an
+        # unlabelled "Website" and gives no clue where it goes.
+        about.add_link("Source code", "https://github.com/nixfred/omavoice")
+        about.add_link("nixfred.com", "https://nixfred.com")
         about.present(self.window)
 
     def notify_saved(self, saved):
