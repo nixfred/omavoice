@@ -4,6 +4,7 @@ import struct
 import tempfile
 import unittest
 from datetime import datetime
+from unittest import mock
 from pathlib import Path
 
 from omavoice import pcm
@@ -265,24 +266,21 @@ class VadTests(unittest.TestCase):
         self.assertIsNone(vad.analyze("error: unknown argument: -vspd"))
         self.assertEqual(vad.analyze(self.NONE), [])
 
+    @staticmethod
+    def _detector(stdout, returncode=0, stderr=""):
+        """Stand in for the detector binary, so these tests need nothing installed."""
+        proc = mock.Mock(stdout=stdout, returncode=returncode, stderr=stderr)
+        return mock.patch.object(vad_module().subprocess, "run", return_value=proc)
+
     def test_gate_fails_open_on_unreadable_output(self):
-        from omavoice import vad
-        from omavoice.vad import SpeechGate
-
-        class FakeProc:
-            returncode = 0
-            stdout = "error: unknown argument: -vspd"
-            stderr = ""
-
-        gate = SpeechGate(__file__)
-        original = vad.subprocess.run
-        vad.subprocess.run = lambda *a, **k: FakeProc()
-        try:
+        vad = vad_module()
+        with mock.patch.object(vad, "available", return_value=True), \
+                self._detector("error: unknown argument: -vspd"):
+            gate = vad.SpeechGate(__file__)
+            self.assertTrue(gate.armed)
             self.assertTrue(gate.accepts(b"RIFF"))
             self.assertEqual(gate.rejected, 0)
             self.assertIsNotNone(gate.last_error)
-        finally:
-            vad.subprocess.run = original
 
     def test_centiseconds_become_seconds(self):
         from omavoice import vad
@@ -299,22 +297,27 @@ class VadTests(unittest.TestCase):
         self.assertEqual(gate.checked, 0)
 
     def test_gate_rejects_a_chunk_with_no_speech(self):
-        from omavoice import vad
-        from omavoice.vad import SpeechGate
-
-        class FakeProc:
-            returncode = 0
-            stdout = VadTests.NONE
-            stderr = ""
-
-        gate = SpeechGate(__file__)          # any existing file satisfies `armed`
-        original = vad.subprocess.run
-        vad.subprocess.run = lambda *a, **k: FakeProc()
-        try:
+        vad = vad_module()
+        with mock.patch.object(vad, "available", return_value=True), \
+                self._detector(self.NONE):
+            gate = vad.SpeechGate(__file__)   # any existing file satisfies `armed`
             self.assertFalse(gate.accepts(b"RIFF"))
             self.assertEqual(gate.rejected, 1)
-        finally:
-            vad.subprocess.run = original
+
+    def test_gate_passes_a_chunk_that_holds_speech(self):
+        vad = vad_module()
+        with mock.patch.object(vad, "available", return_value=True), \
+                self._detector(self.ONE):
+            gate = vad.SpeechGate(__file__)
+            self.assertTrue(gate.accepts(b"RIFF"))
+            self.assertEqual(gate.rejected, 0)
+
+    def test_gate_is_inert_when_the_detector_is_not_installed(self):
+        vad = vad_module()
+        with mock.patch.object(vad, "available", return_value=False):
+            gate = vad.SpeechGate(__file__)
+            self.assertFalse(gate.armed)
+            self.assertTrue(gate.accepts(b"RIFF"))
 
 
 class NoPromptTests(unittest.TestCase):
@@ -336,3 +339,8 @@ def inspect_source():
     import inspect
     from omavoice import live
     return inspect.getsource(live)
+
+
+def vad_module():
+    from omavoice import vad
+    return vad

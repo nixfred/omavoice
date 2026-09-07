@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.0-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.1-e01b24?style=for-the-badge"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-ffd166?style=for-the-badge"></a>
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793d1?style=for-the-badge&logo=archlinux&logoColor=white">
   <img alt="GTK4 + libadwaita" src="https://img.shields.io/badge/GTK4-libadwaita-7c4dff?style=for-the-badge&logo=gnome&logoColor=white">
@@ -98,7 +98,7 @@ Everything it needs is in the official repositories:
 | Dependency | Why |
 |---|---|
 | `python-gobject` `gtk4` `libadwaita` | The window |
-| `pipewire-audio` `pipewire-pulse` `libpulse` | Capture and input enumeration |
+| `pipewire-audio` `pulse-native-provider` `libpulse` | Capture and input enumeration |
 | `ffmpeg` | Resampling and encoding |
 | `whisper-cpp` `ggml-cpu` | Speech recognition, on the CPU, on this machine |
 
