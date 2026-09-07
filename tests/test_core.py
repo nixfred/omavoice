@@ -2,6 +2,7 @@ import json
 import os
 import struct
 import tempfile
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -547,3 +548,54 @@ class OrphanReaperTests(unittest.TestCase):
                 self.assertEqual(whisper.reap_orphaned_servers(), 1)
                 killed.assert_called_once()
             self.assertEqual(list(registry.iterdir()), [])
+
+
+class RecoveryTests(unittest.TestCase):
+    """A take killed mid-recording leaves master.raw behind; it must not be lost."""
+
+    def _workdir(self, root, name, seconds, age_seconds=3600):
+        work = root / ".omavoice-tmp" / name
+        work.mkdir(parents=True)
+        master = work / "master.raw"
+        master.write_bytes(b"\x11\x11" * int(pcm.SAMPLE_RATE * seconds))
+        old = time.time() - age_seconds
+        os.utime(master, (old, old))
+        return work
+
+    def test_a_finished_length_take_is_encoded_back(self):
+        from omavoice.config import Settings
+        from omavoice.session import recover_interrupted_takes
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._workdir(root, "2026-09-07_10-00-00-abc123", 2.0)
+            out = recover_interrupted_takes(Settings(recordings_dir=str(root)))
+            self.assertEqual(len(out), 1)
+            self.assertTrue(out[0].name.startswith("2026-09-07_10-00-00-recovered"))
+            self.assertTrue(out[0].exists() and out[0].stat().st_size > 0)
+            self.assertFalse((root / ".omavoice-tmp").exists())
+
+    def test_a_take_still_being_written_is_left_alone(self):
+        from omavoice.config import Settings
+        from omavoice.session import recover_interrupted_takes
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            work = self._workdir(root, "2026-09-07_10-00-00-live", 2.0, age_seconds=0)
+            self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=str(root))), [])
+            self.assertTrue((work / "master.raw").exists(), "an in-progress take was touched")
+
+    def test_scraps_are_cleared_rather_than_encoded(self):
+        from omavoice.config import Settings
+        from omavoice.session import recover_interrupted_takes
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._workdir(root, "2026-09-07_10-00-00-tiny", 0.2)      # too short to matter
+            empty = root / ".omavoice-tmp" / "2026-09-07_10-00-01-none"
+            empty.mkdir(parents=True)                                  # no master.raw at all
+            self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=str(root))), [])
+            self.assertFalse((root / ".omavoice-tmp").exists())
+
+    def test_no_temp_directory_at_all(self):
+        from omavoice.config import Settings
+        from omavoice.session import recover_interrupted_takes
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=d)), [])

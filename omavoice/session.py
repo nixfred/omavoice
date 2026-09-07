@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from pathlib import Path
 from omavoice import mpris, vad, whisper
 from omavoice.config import Settings
 from omavoice.encoder import encode
-from omavoice.formats import AudioFormat
+from omavoice.formats import AudioFormat, by_key
 from omavoice.live import LiveTranscriber
 from omavoice.naming import basename, transcript_path_for, unique_basename
 from omavoice.pcm import bytes_to_seconds
@@ -38,6 +39,53 @@ class SavedRecording:
     audio_path: Path
     transcript_path: Path
     seconds: float
+
+
+MIN_RECOVERED_SECONDS = 1.0
+UNTOUCHED_FOR_SECONDS = 60          # below this a take may still be running
+
+
+def recover_interrupted_takes(settings: Settings) -> list:
+    """Turn raw audio from a take that never finished into a real recording.
+
+    A crash or a kill mid-recording leaves master.raw in its work directory.
+    The audio is perfectly good and the user has no way of knowing it is there,
+    so encode it rather than let it rot in a hidden folder. Anything too short
+    to be worth keeping, or with no audio at all, is cleared away instead.
+    """
+    root = settings.recordings_path()
+    tmp_root = root / ".omavoice-tmp"
+    recovered = []
+    try:
+        workdirs = sorted(p for p in tmp_root.iterdir() if p.is_dir())
+    except OSError:
+        return recovered
+    fmt = by_key(settings.format)
+    now = time.time()
+    for workdir in workdirs:
+        master = workdir / "master.raw"
+        try:
+            stat = master.stat()
+        except OSError:
+            shutil.rmtree(workdir, ignore_errors=True)
+            continue
+        if now - stat.st_mtime < UNTOUCHED_FOR_SECONDS:
+            continue                    # still being written to; leave it alone
+        if bytes_to_seconds(stat.st_size) < MIN_RECOVERED_SECONDS:
+            shutil.rmtree(workdir, ignore_errors=True)
+            continue
+        stamp = workdir.name.rsplit("-", 1)[0]
+        base = unique_basename(root, f"{stamp}-recovered", fmt.ext)
+        audio_path = root / f"{base}.{fmt.ext}"
+        try:
+            encode(master, audio_path, fmt)
+        except (RuntimeError, OSError, subprocess.SubprocessError):
+            continue                    # leave it for another attempt
+        recovered.append(audio_path)
+        shutil.rmtree(workdir, ignore_errors=True)
+    with contextlib.suppress(OSError):
+        tmp_root.rmdir()                # only when nothing is left in it
+    return recovered
 
 
 class Engine:

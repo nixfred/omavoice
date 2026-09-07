@@ -56,6 +56,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.refresh_library()
         GLib.timeout_add(150, self._tick)
         GLib.timeout_add_seconds(3, self._rescan_if_idle)
+        threading.Thread(target=self._recover_interrupted, name="omavoice-recover", daemon=True).start()
         self.connect("close-request", self._on_close_request)
 
     # -- construction --------------------------------------------------
@@ -197,6 +198,26 @@ class MainWindow(Adw.ApplicationWindow):
         self.empty_row.set_sensitive(False)
 
     # -- sources -------------------------------------------------------
+
+    def _recover_interrupted(self):
+        """A take killed mid-recording left its audio behind; bring it back."""
+        from omavoice.session import recover_interrupted_takes
+        try:
+            recovered = recover_interrupted_takes(self.settings)
+        except Exception as exc:  # noqa: BLE001 - recovery must never stop the app opening
+            GLib.idle_add(self._on_error, f"Could not recover an interrupted recording: {exc}")
+            return
+        if recovered:
+            GLib.idle_add(self._on_recovered, recovered)
+
+    def _on_recovered(self, recovered):
+        if self.closed:
+            return False
+        self.refresh_library()
+        count = len(recovered)
+        noun = "recording" if count == 1 else "recordings"
+        self.toast_overlay.add_toast(Adw.Toast.new(f"Recovered {count} interrupted {noun}"))
+        return False
 
     def _rescan_if_idle(self):
         """Apps start and stop playing; keep the picker current between takes.

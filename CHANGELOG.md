@@ -2,6 +2,16 @@
 
 All notable changes to Omavoice. Dates are the day the tag was cut.
 
+## 0.3.11 — 2026-09-07
+
+- **A recording interrupted by a crash is no longer lost.** Audio is written to
+  a work directory as it is captured, and a take that never reached the end left
+  it there: intact, in a hidden folder, with nothing to ever clean it up and no
+  way for anyone to know it existed. Starting Omavoice now encodes any such
+  audio into a normal recording named `<timestamp>-recovered`, and clears away
+  work directories holding nothing worth keeping. A take that is still being
+  written is left strictly alone.
+
 ## 0.3.10 — 2026-09-07
 
 - A linter now runs over the code, in CI as well as locally, with a config that

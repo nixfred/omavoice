@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.10-e01b24?style=for-the-badge"></a>
+  <a href="https://github.com/nixfred/omavoice/releases"><img alt="Version" src="https://img.shields.io/badge/version-0.3.11-e01b24?style=for-the-badge"></a>
   <a href="https://github.com/nixfred/omavoice/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/nixfred/omavoice/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-ffd166?style=for-the-badge"></a>
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-PKGBUILD-1793d1?style=for-the-badge&logo=archlinux&logoColor=white">
@@ -193,6 +193,11 @@ flowchart LR
    as a provisional transcript, and `whisper-cli` produces the final transcript in the
    background with Silero voice activity detection. The app holds itself alive until
    that is done, even if you close the window.
+
+If Omavoice is killed part-way through a recording, the audio captured up to
+that point is still on disk. The next launch encodes it into a normal recording
+suffixed `-recovered`, so a crash costs you the tail of a take rather than the
+whole thing.
 
 The speech server is a child process (`whisper-server`) holding the model in
 memory, so it is stopped when Omavoice exits, including when it is killed rather
