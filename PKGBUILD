@@ -1,6 +1,6 @@
 # Maintainer: Fred Nix <frednix@gmail.com>
 pkgname=omavoice
-pkgver=0.3.1
+pkgver=0.3.2
 pkgrel=1
 pkgdesc="Voice recorder with live transcription for Omarchy (GTK4, PipeWire, whisper.cpp)"
 arch=('any')
@@ -26,16 +26,16 @@ optdepends=(
   'voxtype: reuse its downloaded whisper models'
   'ggml-vulkan: GPU acceleration for whisper.cpp on machines with Vulkan'
 )
-source=("$pkgname::git+$url.git#tag=v$pkgver")
+source=("$pkgname-$pkgver::git+$url.git#tag=v$pkgver")
 sha256sums=('SKIP')
 
 check() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/$pkgname-$pkgver"
   python3 -m unittest discover -s tests -q
 }
 
 package() {
-  cd "$srcdir/$pkgname"
+  cd "$srcdir/$pkgname-$pkgver"
   install -d "$pkgdir/usr/lib/omavoice/omavoice"
   install -Dm644 omavoice/*.py -t "$pkgdir/usr/lib/omavoice/omavoice"
   install -Dm755 bin/omavoice "$pkgdir/usr/bin/omavoice"

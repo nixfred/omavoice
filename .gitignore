@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 /pkg/
 /src/
+/omavoice-*/
 *.pkg.tar.zst
 *.pkg.tar.zst.sig
 *.log
