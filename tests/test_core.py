@@ -480,3 +480,9 @@ class MediaOwnershipTests(unittest.TestCase):
             resumed.assert_not_called()
             second._release_media()
             resumed.assert_called_once_with(["org.mpris.a"])
+
+
+class ClockTests(unittest.TestCase):
+    def test_the_idle_clock_reads_zero(self):
+        # The window resets the label through the same formatter it ticks with.
+        self.assertEqual(pcm.format_clock(0), "00:00:00")

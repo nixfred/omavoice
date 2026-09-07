@@ -345,6 +345,9 @@ class MainWindow(Adw.ApplicationWindow):
         subtitle = {"idle": "Ready", "recording": "Recording", "paused": "Paused"}[self.state]
         self.window_title.set_subtitle(subtitle)
         if not recording:
+            # Back to zero: a stopped clock reading 00:00:22 beside "Ready"
+            # says the take is still running.
+            self.elapsed.set_label(format_clock(0))
             self.level.set_value(0)
             self.banner.set_revealed(False)
             self.engine_label.set_label("")
