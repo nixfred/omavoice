@@ -510,3 +510,37 @@ class AboutLinkTests(unittest.TestCase):
         self.assertEqual(labels, ["Source code", "nixfred.com", "Report an Issue"])
         for _, uri in OmavoiceApp.ABOUT_LINKS:
             self.assertTrue(uri.startswith("https://"), uri)
+
+
+class OrphanReaperTests(unittest.TestCase):
+    def test_it_only_signals_something_that_is_a_whisper_server(self):
+        from omavoice import whisper
+        # our own process is not one, so it must never be signalled
+        self.assertFalse(whisper._is_a_whisper_server(os.getpid()))
+        self.assertFalse(whisper._is_a_whisper_server(999999999))
+
+    def test_a_stale_entry_is_cleared_without_killing_anything(self):
+        from omavoice import whisper
+        with tempfile.TemporaryDirectory() as d:
+            registry = Path(d) / "servers"
+            registry.mkdir(parents=True)
+            (registry / "999999999").write_text("gone")   # long-dead pid
+            (registry / "not-a-pid").write_text("junk")
+            with mock.patch.object(whisper, "_server_registry", return_value=registry), \
+                    mock.patch.object(whisper.os, "kill") as killed:
+                self.assertEqual(whisper.reap_orphaned_servers(), 0)
+                killed.assert_not_called()
+            self.assertEqual(list(registry.iterdir()), [])
+
+    def test_a_live_server_entry_is_reaped(self):
+        from omavoice import whisper
+        with tempfile.TemporaryDirectory() as d:
+            registry = Path(d) / "servers"
+            registry.mkdir(parents=True)
+            (registry / "4242").write_text("model")
+            with mock.patch.object(whisper, "_server_registry", return_value=registry), \
+                    mock.patch.object(whisper, "_is_a_whisper_server", return_value=True), \
+                    mock.patch.object(whisper.os, "kill") as killed:
+                self.assertEqual(whisper.reap_orphaned_servers(), 1)
+                killed.assert_called_once()
+            self.assertEqual(list(registry.iterdir()), [])

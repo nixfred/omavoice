@@ -1,5 +1,6 @@
 """Application object, CLI options, notifications."""
 
+import signal
 import subprocess
 import sys
 
@@ -46,6 +47,14 @@ class OmavoiceApp(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        from omavoice import whisper
+        reaped = whisper.reap_orphaned_servers()
+        if reaped:
+            print(f"stopped {reaped} speech server(s) left by a previous run", file=sys.stderr)
+        # A terminated app must still take its speech server with it. Without
+        # this, pkill or a session logout strands the model in memory.
+        for received in (signal.SIGTERM, signal.SIGHUP):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, received, self._on_signal)
         for name, handler in (("toggle-record", self._toggle_record), ("open-folder", self._open_folder),
                               ("preferences", self._preferences), ("about", self._about),
                               ("quit", self._quit)):
@@ -67,6 +76,11 @@ class OmavoiceApp(Adw.Application):
             self.window.toggle_record()
 
     # -- actions -------------------------------------------------------
+
+    def _on_signal(self):
+        self.engine.shutdown()
+        self.quit()
+        return GLib.SOURCE_REMOVE
 
     def _quit(self, *_):
         # Route through the window so an active take is stopped and saved first.

@@ -2,6 +2,21 @@
 
 All notable changes to Omavoice. Dates are the day the tag was cut.
 
+## 0.3.9 — 2026-09-07
+
+- The About dialog carries its links on its face: Source code, nixfred.com and
+  Report an Issue, rather than a single unlabelled "Website" row one click deep
+  on a Details subpage. `Adw.AboutDialog` cannot put named links on its front
+  page, so this is a purpose-built dialog.
+- **The speech server no longer outlives the app.** Closing the window always
+  stopped it, but being killed did not: a `pkill`, a session logout or a crash
+  left `whisper-server` running with its model resident, several hundred
+  megabytes each, for the rest of the login session. Five had accumulated on
+  the development machine holding 1.5 GB. The app now shuts the server down on
+  SIGTERM and SIGHUP, and each launch clears up any server a previous run left
+  behind, matched by recorded PID and verified to really be a whisper-server
+  before anything is signalled.
+
 ## 0.3.8 — 2026-09-07
 
 - The About dialog names its links. The repository was there but rendered as an

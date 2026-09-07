@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import socket
+import signal
 import subprocess
 import tempfile
 import threading
@@ -169,6 +170,50 @@ def _silent_wav(seconds: float = 1.0) -> bytes:
     return buf.getvalue()
 
 
+def _server_registry() -> Path:
+    """Where the PIDs of servers we started are recorded."""
+    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return Path(base) / "omavoice" / "servers"
+
+
+def _is_a_whisper_server(pid: int) -> bool:
+    """Guard against PID reuse: only ever signal something that really is one."""
+    try:
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return False
+    return bool(argv and argv[0]) and argv[0].split(b"/")[-1] == b"whisper-server"
+
+
+def reap_orphaned_servers() -> int:
+    """Stop whisper-servers left behind by a previous run, and return the count.
+
+    Closing the window stops the server, but a crash or a kill leaves it alive
+    holding its model, which is hundreds of megabytes, for as long as the login
+    session lasts. Every launch clears up after the last one.
+    """
+    registry = _server_registry()
+    reaped = 0
+    try:
+        entries = list(registry.iterdir())
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            entry.unlink(missing_ok=True)
+            continue
+        if pid != os.getpid() and _is_a_whisper_server(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                reaped += 1
+            except OSError:
+                pass
+        entry.unlink(missing_ok=True)
+    return reaped
+
+
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
@@ -197,6 +242,7 @@ class WhisperServer:
         self.language = "en" if model.english_only else (language or "auto")
         self.port = None
         self._proc = None
+        self._registry_entry = None
         self._lock = threading.Lock()
         self._ready = threading.Event()
         self._failed = None
@@ -227,6 +273,7 @@ class WhisperServer:
             raise RuntimeError(self._failed) from exc
         finally:
             log.close()
+        self._remember()
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
@@ -251,10 +298,29 @@ class WhisperServer:
             pass
         self._ready.set()
 
+    def _remember(self) -> None:
+        try:
+            registry = _server_registry()
+            registry.mkdir(parents=True, exist_ok=True)
+            self._registry_entry = registry / str(self._proc.pid)
+            self._registry_entry.write_text(str(self.model.path))
+        except OSError:
+            self._registry_entry = None
+
+    def _forget(self) -> None:
+        entry = getattr(self, "_registry_entry", None)
+        if entry is not None:
+            try:
+                entry.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._registry_entry = None
+
     def stop(self) -> None:
         proc = self._proc
         self._proc = None
         self._ready.clear()
+        self._forget()
         if proc is None:
             return
         try:
