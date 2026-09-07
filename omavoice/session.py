@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -89,11 +89,18 @@ class Session:
     """One take. `on_busy(delta)` lets the app hold itself alive while a take finishes."""
 
     def __init__(self, settings: Settings, engine: Engine, callbacks: dict):
-        self.settings = settings
+        # A take keeps its own copy of the settings. Preferences changed while
+        # this one is still encoding must not redirect where it saves or which
+        # model it finishes with.
+        self.settings = replace(settings)
         self.engine = engine
         self.cb = callbacks  # on_status, on_live_text, on_saved, on_error, on_engine
         self.recorder = Recorder()
         self.live = None
+        self.live_model = None
+        self._live_lock = threading.Lock()
+        self._live_starting = False
+        self._stopped = False
         self.fmt = None
         self.title = ""
         self.started_at = None
@@ -127,23 +134,42 @@ class Session:
             # or the system output needs that audio to keep playing.
             self.paused_players = mpris.pause_playing()
         if live:
-            threading.Thread(target=self._start_live, name="omavoice-engine", daemon=True).start()
+            self.enable_live()
+
+    def enable_live(self) -> None:
+        """Bring up live captions. Safe to call twice; the second call is a no-op."""
+        with self._live_lock:
+            if self._stopped or self._live_starting or self.live is not None:
+                return
+            self._live_starting = True
+        threading.Thread(target=self._start_live, name="omavoice-engine", daemon=True).start()
 
     def _start_live(self) -> None:
-        self.cb["on_engine"]("starting")
-        server = self.engine.ensure(self.settings)
+        try:
+            self.cb["on_engine"]("starting")
+            server = self.engine.ensure(self.settings)
+            if server is None:
+                self.cb["on_engine"]("failed")
+                self.cb["on_error"](self.engine.error or "transcription engine unavailable")
+                return
+            self.live_model = self.engine.model
+        finally:
+            with self._live_lock:
+                self._live_starting = False
         if server is None:
-            self.cb["on_engine"]("failed")
-            self.cb["on_error"](self.engine.error or "transcription engine unavailable")
-            return
-        if not self.recorder.running:
-            self.cb["on_engine"]("ready")
             return
         gate = vad.SpeechGate(self.engine.vad_model, threads=max(2, self.settings.effective_threads() // 2))
-        self.live = LiveTranscriber(self.recorder, server, self.settings.chunk_seconds,
-                                    on_text=self.cb["on_live_text"], on_error=self.cb["on_error"],
-                                    gate=gate)
-        self.live.start()
+        worker = LiveTranscriber(self.recorder, server, self.settings.chunk_seconds,
+                                 on_text=self.cb["on_live_text"], on_error=self.cb["on_error"],
+                                 gate=gate)
+        with self._live_lock:
+            # Stop may have run while the model was loading. Publishing the
+            # worker now would leave one nobody ever stops.
+            if self._stopped or not self.recorder.running or self.live is not None:
+                self.cb["on_engine"]("ready")
+                return
+            self.live = worker
+        worker.start()
         self.cb["on_engine"]("ready")
 
     def pause(self) -> None:
@@ -170,12 +196,16 @@ class Session:
 
     def stop(self) -> None:
         """Stop capture; encoding and transcription continue on a worker thread."""
+        with self._live_lock:
+            self._stopped = True
         total = self.recorder.stop()
         mpris.resume(self.paused_players)
         self.paused_players = []
         threading.Thread(target=self._finish_guarded, args=(total,), name="omavoice-finish", daemon=True).start()
 
     def discard(self) -> None:
+        with self._live_lock:
+            self._stopped = True
         self.recorder.stop()
         mpris.resume(self.paused_players)
         if self.live is not None:
@@ -282,5 +312,7 @@ class Session:
             pass
 
     def _final_model(self):
-        live_model = self.engine.model or whisper.resolve_model(self.settings.live_model)
+        # This take's own live model, never whatever the shared engine has
+        # moved on to for a later recording.
+        live_model = self.live_model or whisper.resolve_model(self.settings.live_model)
         return whisper.resolve_model(self.settings.final_model, fallback=live_model)

@@ -344,3 +344,45 @@ def inspect_source():
 def vad_module():
     from omavoice import vad
     return vad
+
+
+def _null_callbacks():
+    names = ("on_status", "on_live_text", "on_saved", "on_error", "on_engine")
+    return {n: (lambda *a, **k: None) for n in names}
+
+
+class SessionIsolationTests(unittest.TestCase):
+    def _session(self, settings=None):
+        from omavoice.config import Settings
+        from omavoice.session import Engine, Session
+        return Session(settings or Settings(), Engine(), _null_callbacks())
+
+    def test_a_take_keeps_its_own_settings(self):
+        from omavoice.config import Settings
+        settings = Settings(format="opus", recordings_dir="/tmp/first")
+        session = self._session(settings)
+        settings.format = "flac"                  # user opens Preferences mid-take
+        settings.recordings_dir = "/tmp/second"
+        self.assertEqual(session.settings.format, "opus")
+        self.assertEqual(session.settings.recordings_dir, "/tmp/first")
+
+    def test_enable_live_does_nothing_once_stopped(self):
+        session = self._session()
+        session._stopped = True
+        session.enable_live()
+        self.assertFalse(session._live_starting)
+        self.assertIsNone(session.live)
+
+    def test_enable_live_only_starts_one_worker(self):
+        session = self._session()
+        session._live_starting = True             # a startup is already in flight
+        session.enable_live()
+        self.assertIsNone(session.live)
+
+    def test_final_model_ignores_a_later_takes_engine(self):
+        from omavoice.whisper import Model
+        session = self._session()
+        mine = Model(Path("/models/ggml-base.en.bin"))
+        session.live_model = mine
+        session.engine.model = Model(Path("/models/ggml-large-v3.bin"))
+        self.assertEqual(session._final_model(), mine)

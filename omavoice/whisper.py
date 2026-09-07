@@ -14,6 +14,7 @@ import os
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -390,7 +391,11 @@ def download_model(name: str, timeout: float | None = None) -> Path:
     target_dir = data_dir() / "models"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f"ggml-{name}.bin"
-    tmp = target.with_suffix(".bin.part")
+    # A unique scratch name: two downloads of the same model must not write
+    # over each other, and neither may delete the other's partial file.
+    handle, tmp_path = tempfile.mkstemp(prefix=f"ggml-{name}.", suffix=".part", dir=target_dir)
+    os.close(handle)
+    tmp = Path(tmp_path)
     cmd = ["curl", "-L", "--fail", "--silent", "--show-error", "-o", str(tmp), url]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)

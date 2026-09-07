@@ -40,6 +40,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.sources = []
         self.silent_since = None
         self.pending_final = set()
+        self.take = None          # identity of the take the UI currently belongs to
+        self._rescanning = False
         self.set_default_size(settings.window_width, settings.window_height)
         self.set_icon_name("io.github.nixfred.omavoice")
 
@@ -193,16 +195,37 @@ class MainWindow(Adw.ApplicationWindow):
     # -- sources -------------------------------------------------------
 
     def _rescan_if_idle(self):
-        """Apps start and stop playing; keep the picker current between takes."""
-        if self.state == "idle" and not self.source_row.get_property("has-focus"):
-            fresh = sources.list_all()
-            if [s.name for s in fresh] != [s.name for s in self.sources]:
-                self.refresh_sources(fresh)
+        """Apps start and stop playing; keep the picker current between takes.
+
+        Enumerating runs pactl and pw-dump, so it happens on a worker thread.
+        On the main loop it would stall the window for as long as PipeWire
+        takes to answer, which on a wedged server is seconds.
+        """
+        if self.state == "idle" and not self._rescanning and not self.source_row.get_property("has-focus"):
+            self._rescanning = True
+            threading.Thread(target=self._rescan_worker, name="omavoice-rescan", daemon=True).start()
         return True
 
-    def refresh_sources(self, fresh=None):
+    def _rescan_worker(self):
+        try:
+            found = (sources.list_all(), sources.default_source_name())
+        except Exception:  # noqa: BLE001 - a failed scan just means no update
+            found = None
+        GLib.idle_add(self._apply_rescan, found)
+
+    def _apply_rescan(self, found):
+        self._rescanning = False
+        if found is None or self.state != "idle" or self.source_row.get_property("has-focus"):
+            return False
+        fresh, default = found
+        if [s.name for s in fresh] != [s.name for s in self.sources]:
+            self.refresh_sources(fresh, default)
+        return False
+
+    def refresh_sources(self, fresh=None, default=None):
         self.sources = sources.list_all() if fresh is None else fresh
-        default = sources.default_source_name()
+        if default is None:
+            default = sources.default_source_name()
         labels = ["System default" + (f" ({self._describe(default)})" if default else "")]
         labels += [s.label for s in self.sources]
         self.source_row.handler_block_by_func(self._on_source_changed)
@@ -239,7 +262,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.settings.save()
         self.transcript_revealer.set_reveal_child(switch.get_active())
         if switch.get_active() and self.state != "idle" and self.session and self.session.live is None:
-            threading.Thread(target=self.session._start_live, daemon=True).start()
+            self.session.enable_live()
 
     # -- recording -----------------------------------------------------
 
@@ -262,12 +285,14 @@ class MainWindow(Adw.ApplicationWindow):
         fmt = by_key(self.settings.format)
         title = self.title_row.get_text().strip()
         self._clear_transcript()
+        take = object()
+        self.take = take
         callbacks = {
             "on_status": lambda text: GLib.idle_add(self._set_status, text),
-            "on_live_text": lambda text: GLib.idle_add(self._append_transcript, text),
-            "on_saved": lambda saved, final: GLib.idle_add(self._on_saved, saved, final),
+            "on_live_text": lambda text: GLib.idle_add(self._append_transcript, take, text),
+            "on_saved": lambda saved, final: GLib.idle_add(self._on_saved, take, saved, final),
             "on_error": lambda text: GLib.idle_add(self._on_error, text),
-            "on_engine": lambda state: GLib.idle_add(self._on_engine, state),
+            "on_engine": lambda state: GLib.idle_add(self._on_engine, take, state),
             "on_busy": self.get_application().busy,
         }
         self.session = Session(self.settings, self.engine, callbacks)
@@ -354,7 +379,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.status.set_label(text or "")
         return False
 
-    def _on_engine(self, state):
+    def _on_engine(self, take, state):
+        if take is not self.take:
+            return False
         labels = {"starting": "Loading speech model…", "ready": "", "failed": "Transcription unavailable"}
         self.engine_label.set_label(labels.get(state, ""))
         return False
@@ -363,7 +390,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast_overlay.add_toast(Adw.Toast.new(text))
         return False
 
-    def _on_saved(self, saved, final):
+    def _on_saved(self, take, saved, final):
         if final:
             self.pending_final.discard(saved.audio_path)
             self.refresh_library()
@@ -376,13 +403,18 @@ class MainWindow(Adw.ApplicationWindow):
         toast.set_action_name("app.open-folder")
         self.toast_overlay.add_toast(toast)
         self.get_application().notify_saved(saved)
-        self.title_row.set_text("")
+        if take is self.take:
+            # Only clear the title box if it still belongs to this take; the
+            # user may already be typing a name for the next one.
+            self.title_row.set_text("")
         return False
 
     def _clear_transcript(self):
         self.transcript.get_buffer().set_text("")
 
-    def _append_transcript(self, text):
+    def _append_transcript(self, take, text):
+        if take is not self.take:
+            return False          # a previous take flushing its last caption
         buf = self.transcript.get_buffer()
         end = buf.get_end_iter()
         buf.insert(end, ("" if buf.get_char_count() == 0 else " ") + text)
@@ -430,11 +462,19 @@ class MainWindow(Adw.ApplicationWindow):
             show.connect("clicked", lambda *_: self._xdg_open(rec.transcript))
             row.add_suffix(show)
 
-        more_menu = Gio.Menu()
-        more_menu.append("Rename…", f"win.rename::{rec.path}")
-        more_menu.append("Move to trash", f"win.trash::{rec.path}")
-        more = Gtk.MenuButton(icon_name="view-more-symbolic", valign=Gtk.Align.CENTER, menu_model=more_menu)
+        more = Gtk.MenuButton(icon_name="view-more-symbolic", valign=Gtk.Align.CENTER)
         more.add_css_class("flat")
+        if rec.path in self.pending_final:
+            # Renaming now would leave the final transcript writing to the old
+            # name, so the recording keeps its provisional text and an orphan
+            # .txt appears beside it.
+            more.set_sensitive(False)
+            more.set_tooltip_text("Still transcribing")
+        else:
+            more_menu = Gio.Menu()
+            more_menu.append("Rename…", f"win.rename::{rec.path}")
+            more_menu.append("Move to trash", f"win.trash::{rec.path}")
+            more.set_menu_model(more_menu)
         row.add_suffix(more)
         return row
 
