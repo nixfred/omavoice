@@ -2,6 +2,12 @@
 
 All notable changes to Omavoice. Dates are the day the tag was cut.
 
+## 0.3.12 — 2026-09-07
+
+- Fixed the 0.3.11 recovery tests, which called the real encoder and so failed
+  on a machine without ffmpeg. Caught by the CI job added in 0.3.10, which
+  exists precisely to fail on a bare box before an install does.
+
 ## 0.3.11 — 2026-09-07
 
 - **A recording interrupted by a crash is no longer lost.** Audio is written to

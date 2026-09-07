@@ -551,7 +551,19 @@ class OrphanReaperTests(unittest.TestCase):
 
 
 class RecoveryTests(unittest.TestCase):
-    """A take killed mid-recording leaves master.raw behind; it must not be lost."""
+    """A take killed mid-recording leaves master.raw behind; it must not be lost.
+
+    The encoder is stubbed throughout: what matters here is which work
+    directories get picked up, what the recovered file is called and what is
+    cleaned away, none of which should need ffmpeg on the machine.
+    """
+
+    @staticmethod
+    def _stub_encoder():
+        def fake_encode(raw_path, out_path, fmt):
+            out_path.write_bytes(b"encoded")
+        from omavoice import session as session_module
+        return mock.patch.object(session_module, "encode", fake_encode)
 
     def _workdir(self, root, name, seconds, age_seconds=3600):
         work = root / ".omavoice-tmp" / name
@@ -568,7 +580,8 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             self._workdir(root, "2026-09-07_10-00-00-abc123", 2.0)
-            out = recover_interrupted_takes(Settings(recordings_dir=str(root)))
+            with self._stub_encoder():
+                out = recover_interrupted_takes(Settings(recordings_dir=str(root)))
             self.assertEqual(len(out), 1)
             self.assertTrue(out[0].name.startswith("2026-09-07_10-00-00-recovered"))
             self.assertTrue(out[0].exists() and out[0].stat().st_size > 0)
@@ -580,7 +593,8 @@ class RecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             work = self._workdir(root, "2026-09-07_10-00-00-live", 2.0, age_seconds=0)
-            self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=str(root))), [])
+            with self._stub_encoder():
+                self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=str(root))), [])
             self.assertTrue((work / "master.raw").exists(), "an in-progress take was touched")
 
     def test_scraps_are_cleared_rather_than_encoded(self):
@@ -591,7 +605,8 @@ class RecoveryTests(unittest.TestCase):
             self._workdir(root, "2026-09-07_10-00-00-tiny", 0.2)      # too short to matter
             empty = root / ".omavoice-tmp" / "2026-09-07_10-00-01-none"
             empty.mkdir(parents=True)                                  # no master.raw at all
-            self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=str(root))), [])
+            with self._stub_encoder():
+                self.assertEqual(recover_interrupted_takes(Settings(recordings_dir=str(root))), [])
             self.assertFalse((root / ".omavoice-tmp").exists())
 
     def test_no_temp_directory_at_all(self):
