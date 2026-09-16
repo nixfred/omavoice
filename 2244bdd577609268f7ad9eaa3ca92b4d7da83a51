@@ -1,0 +1,5 @@
+LR-T: whisper, hallucination, repetition-loop, max-context, vad, transcript-quality, oatlug
+LR-D: omavoice, transcription, whisper.cpp
+LR-K: mc-0-stops-carry-forward-loops, vad-does-not-stop-in-speech-loops, oatlug-02-transcript-loops
+LR-E: measured A/B/D/E on oatlug-02 slice 01:18:30-01:25:00 (158/6/0/0 looped repeats)
+LR-L: law-2, law-5, law-7
